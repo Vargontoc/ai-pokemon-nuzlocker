@@ -1,4 +1,4 @@
-## Sprint Review [09-02-2026-mcp-endpoints]
+## Sprint Review [08-02-2026-mcp-endpoints]
 
 ### Objetivos
 - [x] Implementar endpoints MCP para consulta de Pokémon
