@@ -1,0 +1,63 @@
+# Visual Studio / .NET
+bin/
+obj/
+**/bin/
+**/obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Visual Studio Code
+.vscode/
+
+# Rider
+.idea/
+
+# Logs
+*.log
+
+# NuGet
+*.nupkg
+packages/
+project.lock.json
+project.fragments.lock.json
+
+# Build outputs
+publish/
+
+# Runtime
+*.pid
+*.seed
+
+# OS files
+Thumbs.db
+ehthumbs.db
+Icon?
+Desktop.ini
+
+# SQLite DBs and local generated DBs
+*.db
+*.sqlite
+
+# Local secrets and settings
+local.settings.json
+secrets.json
+appsettings.Development.json
+
+# Temp files
+*.tmp
+*.temp
+
+# Coverage
+coverage*
+
+# JetBrains Rider caches
+.idea/
+
+# Ignore test results and build artifacts
+TestResults/
+
+# Ignore environment files
+.env
+

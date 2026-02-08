@@ -1,0 +1,17 @@
+# Visual Studio
+*.user
+*.suo
+
+# Build
+bin/
+obj/
+
+# Visual Studio Code
+.vscode/
+
+# Dotnet
+**/bin/
+**/obj/
+
+# SQLite DB
+*.db
