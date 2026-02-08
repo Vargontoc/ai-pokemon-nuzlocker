@@ -1,3 +1,4 @@
+using es.vargontoc.nuzlocke.ai.Configuration;
 using es.vargontoc.nuzlocke.ai.Data;
 using es.vargontoc.nuzlocke.ai.Repositories;
 using es.vargontoc.nuzlocke.ai.Services;
@@ -6,9 +7,15 @@ using ModelContextProtocol.Server;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Configure options from appsettings
+builder.Services.Configure<PokeApiOptions>(
+    builder.Configuration.GetSection(PokeApiOptions.SectionName));
+
 // Register SQLite database
+var connectionString = builder.Configuration.GetConnectionString("Database")
+    ?? "Data Source=pokecache.db";
 builder.Services.AddDbContext<PokeDbContext>(options =>
-    options.UseSqlite("Data Source=pokecache.db"));
+    options.UseSqlite(connectionString));
 
 // Register cache repositories
 builder.Services.AddScoped<ICacheRepository<CachedPokemon>, PokemonCacheRepository>();

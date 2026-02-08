@@ -15,3 +15,16 @@ obj/
 
 # SQLite DB
 *.db
+*.db-shm
+*.db-wal
+
+# Allow appsettings files (negates parent .gitignore)
+!appsettings.json
+!appsettings.Development.json
+!appsettings.Production.json
+
+# Local configuration overrides (may contain secrets)
+appsettings.Local.json
+appsettings.*.Local.json
+.env
+.env.local

@@ -1,7 +1,9 @@
 using System.Net.Http;
 using System.Threading.Tasks;
+using es.vargontoc.nuzlocke.ai.Configuration;
 using es.vargontoc.nuzlocke.ai.Services;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace es.vargontoc.nuzlocke.ai.Tests;
@@ -15,7 +17,12 @@ public class PokeApiConnectorTests
         var httpClient = new HttpClient();
         var logger = LoggerFactory.Create(builder => builder.AddConsole())
             .CreateLogger<PokeApiConnector>();
-        _connector = new PokeApiConnector(httpClient, logger);
+        var options = Options.Create(new PokeApiOptions
+        {
+            BaseUrl = "https://pokeapi.co/api/v2",
+            TimeoutSeconds = 30
+        });
+        _connector = new PokeApiConnector(httpClient, logger, options);
     }
 
     [Fact]

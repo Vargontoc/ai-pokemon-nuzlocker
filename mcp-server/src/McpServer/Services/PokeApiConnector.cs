@@ -1,5 +1,7 @@
 using System.Text.Json;
+using es.vargontoc.nuzlocke.ai.Configuration;
 using es.vargontoc.nuzlocke.ai.Models;
+using Microsoft.Extensions.Options;
 
 namespace es.vargontoc.nuzlocke.ai.Services;
 
@@ -7,32 +9,39 @@ public class PokeApiConnector : IPokeApiConnector
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger<PokeApiConnector> _logger;
-    private const string BaseUrl = "https://pokeapi.co/api/v2";
+    private readonly string _baseUrl;
 
-    public PokeApiConnector(HttpClient httpClient, ILogger<PokeApiConnector> logger)
+    public PokeApiConnector(
+        HttpClient httpClient,
+        ILogger<PokeApiConnector> logger,
+        IOptions<PokeApiOptions> options)
     {
         _httpClient = httpClient;
         _logger = logger;
+        _baseUrl = options.Value.BaseUrl;
+
+        // Configure timeout from options
+        _httpClient.Timeout = TimeSpan.FromSeconds(options.Value.TimeoutSeconds);
     }
 
     public async Task<PokemonData?> GetPokemonAsync(string nameOrId)
     {
-        return await GetResourceAsync<PokemonData>($"{BaseUrl}/pokemon/{nameOrId.ToLower()}");
+        return await GetResourceAsync<PokemonData>($"{_baseUrl}/pokemon/{nameOrId.ToLower()}");
     }
 
     public async Task<MoveData?> GetMoveAsync(string nameOrId)
     {
-        return await GetResourceAsync<MoveData>($"{BaseUrl}/move/{nameOrId.ToLower()}");
+        return await GetResourceAsync<MoveData>($"{_baseUrl}/move/{nameOrId.ToLower()}");
     }
 
     public async Task<TypeData?> GetTypeAsync(string nameOrId)
     {
-        return await GetResourceAsync<TypeData>($"{BaseUrl}/type/{nameOrId.ToLower()}");
+        return await GetResourceAsync<TypeData>($"{_baseUrl}/type/{nameOrId.ToLower()}");
     }
 
     public async Task<AbilityData?> GetAbilityAsync(string nameOrId)
     {
-        return await GetResourceAsync<AbilityData>($"{BaseUrl}/ability/{nameOrId.ToLower()}");
+        return await GetResourceAsync<AbilityData>($"{_baseUrl}/ability/{nameOrId.ToLower()}");
     }
 
     private async Task<T?> GetResourceAsync<T>(string endpoint) where T : class

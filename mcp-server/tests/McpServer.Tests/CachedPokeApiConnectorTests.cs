@@ -1,8 +1,10 @@
+using es.vargontoc.nuzlocke.ai.Configuration;
 using es.vargontoc.nuzlocke.ai.Data;
 using es.vargontoc.nuzlocke.ai.Repositories;
 using es.vargontoc.nuzlocke.ai.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace es.vargontoc.nuzlocke.ai.Tests;
@@ -31,7 +33,8 @@ public class CachedPokeApiConnectorTests : IDisposable
         // Create direct API connector
         var httpClient = new HttpClient();
         var apiLogger = NullLogger<PokeApiConnector>.Instance;
-        var apiConnector = new PokeApiConnector(httpClient, apiLogger);
+        var pokeApiOptions = Options.Create(new PokeApiOptions());
+        var apiConnector = new PokeApiConnector(httpClient, apiLogger, pokeApiOptions);
 
         // Create cached connector
         var cachedLogger = NullLogger<CachedPokeApiConnector>.Instance;
