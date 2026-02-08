@@ -1,4 +1,10 @@
+using es.vargontoc.nuzlocke.ai.Services;
+
 var builder = WebApplication.CreateBuilder(args);
+
+// Register services
+builder.Services.AddHttpClient<IPokeApiConnector, PokeApiConnector>();
+
 var app = builder.Build();
 
 app.MapGet("/", () => "AI Pokemon Nuzlocker MCP Server");
