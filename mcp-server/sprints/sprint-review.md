@@ -1,20 +1,22 @@
-## Sprint Review [09-02-2026-ef-migrations]
+## Sprint Review [Configuración de Entorno]
 
 ### Objetivos
-- [ ] Agregar paquete EF Core Design tools
-- [ ] Crear migración inicial para el esquema actual de la base de datos
-- [ ] Actualizar Program.cs para usar Migrate() en lugar de EnsureCreated()
-- [ ] Crear script SQL de migración para producción
-- [ ] Documentar proceso de migraciones para futuros cambios de esquema
+- [ ] Crear appsettings.json con configuración base (ConnectionStrings, Logging, PokeApi URL)
+- [ ] Implementar appsettings.Development.json y appsettings.Production.json
+- [ ] Agregar soporte para variables de entorno (.env) usando dotenv o similar
+- [ ] Configurar diferentes cadenas de conexión para Development/Production
+- [ ] Actualizar Program.cs para leer configuración desde appsettings
+- [ ] Actualizar tests para usar configuración de test independiente
 
 ### Aprobación Sprint review
-- [ ] Migraciones aplicadas exitosamente en base de datos limpia
-- [ ] Tests pasan con el nuevo sistema de migraciones
-- [ ] Documentación de migraciones completa
+- [ ] Aplicación lee configuración correctamente desde appsettings.json
+- [ ] Variables de entorno sobrescriben valores de appsettings cuando están presentes
+- [ ] Tests pasan con configuración independiente
+- [ ] Documentación actualizada con instrucciones de configuración
 
 ### Riesgos
-- Conflictos con base de datos existente creada con EnsureCreated()
-- Pérdida de datos durante migración
+- Exponer secretos en archivos de configuración
+- Conflictos entre diferentes fuentes de configuración (appsettings vs env vars)
 
 ### Fallos
 - [ ]

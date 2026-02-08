@@ -6,7 +6,8 @@ using System.Text.Json;
 
 namespace es.vargontoc.nuzlocke.ai.Tests;
 
-public class McpEndpointsTests : IClassFixture<WebApplicationFactory<es.vargontoc.nuzlocke.ai.Program>>
+[Collection("WebApp collection")]
+public class McpEndpointsTests
 {
     private readonly WebApplicationFactory<es.vargontoc.nuzlocke.ai.Program> _factory;
     private readonly HttpClient _client;

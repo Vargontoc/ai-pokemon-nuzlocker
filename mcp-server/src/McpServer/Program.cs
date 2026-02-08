@@ -30,11 +30,11 @@ builder.Services
 
 var app = builder.Build();
 
-// Ensure database is created
+// Apply migrations
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<PokeDbContext>();
-    db.Database.EnsureCreated();
+    db.Database.Migrate();
 }
 
 

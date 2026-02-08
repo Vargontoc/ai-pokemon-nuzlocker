@@ -6,7 +6,8 @@ using Xunit;
 
 namespace es.vargontoc.nuzlocke.ai.Tests;
 
-public class IntegrationTests : IClassFixture<WebApplicationFactory<es.vargontoc.nuzlocke.ai.Program>>
+[Collection("WebApp collection")]
+public class IntegrationTests
 {
     private readonly WebApplicationFactory<es.vargontoc.nuzlocke.ai.Program> _factory;
 
