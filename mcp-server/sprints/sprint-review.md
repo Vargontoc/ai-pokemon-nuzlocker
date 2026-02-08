@@ -1,24 +1,25 @@
-## Sprint Review [Health Checks Avanzados]
+## Sprint Review [Logging Estructurado con Serilog]
 
 ### Objetivos
-- [ ] Agregar paquete Microsoft.Extensions.Diagnostics.HealthChecks
-- [ ] Implementar health check para base de datos SQLite
-- [ ] Implementar health check para conectividad con PokeApi
-- [ ] Crear endpoint /health/ready para readiness checks
-- [ ] Crear endpoint /health/live para liveness checks
-- [ ] Agregar tests para los health checks implementados
+- [ ] Agregar paquete Serilog y extensiones (Serilog.AspNetCore, Serilog.Sinks.Console, Serilog.Sinks.File)
+- [ ] Configurar Serilog en Program.cs con WriteTo Console y File
+- [ ] Implementar structured logging en PokeApiConnector con propiedades contextuales
+- [ ] Agregar enrichers de contexto (Machine, Environment, Request)
+- [ ] Configurar diferentes niveles de log por entorno (Development vs Production)
+- [ ] Actualizar appsettings para configuración de Serilog
 
 ### Aprobación Sprint review
-- [ ] Endpoint /health retorna estado agregado de todos los checks
-- [ ] Endpoint /health/ready verifica que DB y PokeApi están disponibles
-- [ ] Endpoint /health/live verifica que la aplicación está corriendo
-- [ ] Tests verifican comportamiento de health checks (healthy/unhealthy)
-- [ ] Respuestas JSON incluyen detalles de cada check individual
+- [ ] Logs se escriben en formato estructurado JSON
+- [ ] Console sink muestra logs en desarrollo
+- [ ] File sink escribe logs a archivo rotativo en producción
+- [ ] Logs incluyen propiedades contextuales (Timestamp, Level, Properties)
+- [ ] Configuración separada por entorno (appsettings.Development.json vs Production)
+- [ ] Tests pasan sin regresiones
 
 ### Riesgos
-- Health checks muy frecuentes pueden impactar rendimiento
-- Timeouts de checks pueden causar falsos negativos
-- Exponer información sensible en respuestas de health checks
+- Archivos de log pueden crecer y llenar disco
+- Logs excesivos pueden impactar rendimiento
+- Información sensible en logs (tokens, passwords)
 
 ### Fallos
 - [ ]

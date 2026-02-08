@@ -14,13 +14,13 @@ public class IntegrationTests
     public IntegrationTests(WebApplicationFactory<es.vargontoc.nuzlocke.ai.Program> factory) => _factory = factory;
 
     [Fact]
-    public async Task HealthEndpoint_ReturnsOk()
+    public async Task HealthEndpoint_ReturnsHealthy()
     {
         using var client = _factory.CreateClient();
         var res = await client.GetAsync("/health");
         res.EnsureSuccessStatusCode();
         var json = await res.Content.ReadAsStringAsync();
         using var doc = JsonDocument.Parse(json);
-        Assert.Equal("ok", doc.RootElement.GetProperty("status").GetString());
+        Assert.Equal("Healthy", doc.RootElement.GetProperty("status").GetString());
     }
 }
