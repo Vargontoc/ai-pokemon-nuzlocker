@@ -1,22 +1,20 @@
-## Sprint Review [10-02-2026-sqlite-cache]
+## Sprint Review [09-02-2026-ef-migrations]
 
 ### Objetivos
-- [ ] Diseñar esquema de base de datos SQLite para caché
-- [ ] Implementar repositorio SQLite para almacenar Pokémon
-- [ ] Implementar repositorio SQLite para almacenar Movimientos
-- [ ] Implementar repositorio SQLite para almacenar Tipos
-- [ ] Implementar repositorio SQLite para almacenar Habilidades
-- [ ] Integrar caché con PokeApiConnector (priorizar SQLite sobre PokeApi)
-- [ ] Agregar estrategia de invalidación/actualización de caché
+- [ ] Agregar paquete EF Core Design tools
+- [ ] Crear migración inicial para el esquema actual de la base de datos
+- [ ] Actualizar Program.cs para usar Migrate() en lugar de EnsureCreated()
+- [ ] Crear script SQL de migración para producción
+- [ ] Documentar proceso de migraciones para futuros cambios de esquema
 
 ### Aprobación Sprint review
-- [ ] Pasar tests de integración con SQLite
-- [ ] Validar priorización: SQLite → PokeApi → User input
-- [ ] Verificar reducción de llamadas a PokeApi
+- [ ] Migraciones aplicadas exitosamente en base de datos limpia
+- [ ] Tests pasan con el nuevo sistema de migraciones
+- [ ] Documentación de migraciones completa
 
 ### Riesgos
-- Complejidad del esquema de base de datos para datos anidados de PokeApi
-- Sincronización entre caché y PokeApi
+- Conflictos con base de datos existente creada con EnsureCreated()
+- Pérdida de datos durante migración
 
 ### Fallos
 - [ ]
