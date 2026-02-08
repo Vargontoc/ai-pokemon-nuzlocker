@@ -32,6 +32,9 @@ builder.Services.AddHttpClient<PokeApiConnector>();
 // Register cached connector as IPokeApiConnector
 builder.Services.AddScoped<IPokeApiConnector, CachedPokeApiConnector>();
 
+// Register Nuzlocke state manager
+builder.Services.AddSingleton<IStateManager, StateManager>();
+
 // Configure MCP Server
 builder.Services
     .AddMcpServer()
