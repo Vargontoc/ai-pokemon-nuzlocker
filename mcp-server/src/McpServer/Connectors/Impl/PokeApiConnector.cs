@@ -3,7 +3,7 @@ using es.vargontoc.nuzlocke.ai.Configuration;
 using es.vargontoc.nuzlocke.ai.Models;
 using Microsoft.Extensions.Options;
 
-namespace es.vargontoc.nuzlocke.ai.Services;
+namespace es.vargontoc.nuzlocke.ai.Connectors.Impl;
 
 public class PokeApiConnector : IPokeApiConnector
 {
@@ -44,6 +44,11 @@ public class PokeApiConnector : IPokeApiConnector
         return await GetResourceAsync<AbilityData>($"{_baseUrl}/ability/{nameOrId.ToLower()}");
     }
 
+    public async Task<ItemData?> GetItemAsync(string nameOrId)
+    {
+        return await GetResourceAsync<ItemData>($"{_baseUrl}/item/{nameOrId.ToLower()}");
+    }
+
     private async Task<T?> GetResourceAsync<T>(string endpoint) where T : class
     {
         try
@@ -60,6 +65,7 @@ public class PokeApiConnector : IPokeApiConnector
             }
 
             var content = await response.Content.ReadAsStringAsync();
+            _logger.LogDebug("PokeApi response {Endpoint} length={Length} bytes", endpoint, content?.Length ?? 0);
             var options = new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true

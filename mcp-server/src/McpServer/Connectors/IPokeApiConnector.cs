@@ -1,6 +1,6 @@
 using es.vargontoc.nuzlocke.ai.Models;
 
-namespace es.vargontoc.nuzlocke.ai.Services;
+namespace es.vargontoc.nuzlocke.ai.Connectors;
 
 public interface IPokeApiConnector
 {
@@ -23,4 +23,9 @@ public interface IPokeApiConnector
     /// Obtiene información de una habilidad por su nombre o ID
     /// </summary>
     Task<AbilityData?> GetAbilityAsync(string nameOrId);
+
+    /// <summary>
+    /// Obtiene información de un item por su nombre o ID
+    /// </summary>
+    Task<ItemData?> GetItemAsync(string nameOrId);
 }
