@@ -28,4 +28,9 @@ public interface IPokeApiConnector
     /// Obtiene información de un item por su nombre o ID
     /// </summary>
     Task<ItemData?> GetItemAsync(string nameOrId);
+
+    /// <summary>
+    /// Obtiene un subset optimizado de la información del Pokémon (para reducir payload y tokens).
+    /// </summary>
+    Task<PokemonSubset?> GetPokemonSubsetAsync(string nameOrId, int movesLimit = 6);
 }

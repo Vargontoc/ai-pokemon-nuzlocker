@@ -1,3 +1,4 @@
+using es.vargontoc.nuzlocke.ai.Connectors;
 using es.vargontoc.nuzlocke.ai.Models;
 using es.vargontoc.nuzlocke.ai.Services;
 using Microsoft.Extensions.Logging;

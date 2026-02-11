@@ -12,6 +12,7 @@ public class PokeDbContext : DbContext
     public DbSet<CachedMove> CachedMoves { get; set; }
     public DbSet<CachedType> CachedTypes { get; set; }
     public DbSet<CachedAbility> CachedAbilities { get; set; }
+    public DbSet<CachedItem> CachedItems { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -48,6 +49,14 @@ public class PokeDbContext : DbContext
             entity.Property(e => e.JsonData).IsRequired();
             entity.Property(e => e.CachedAt).IsRequired();
         });
+
+        modelBuilder.Entity<CachedItem>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.NameOrId).IsUnique();
+            entity.Property(e => e.JsonData).IsRequired();
+            entity.Property(e => e.CachedAt).IsRequired();
+        });
     }
 }
 
@@ -76,6 +85,14 @@ public class CachedType
 }
 
 public class CachedAbility
+{
+    public int Id { get; set; }
+    public string NameOrId { get; set; } = string.Empty;
+    public string JsonData { get; set; } = string.Empty;
+    public DateTime CachedAt { get; set; }
+}
+
+public class CachedItem
 {
     public int Id { get; set; }
     public string NameOrId { get; set; } = string.Empty;

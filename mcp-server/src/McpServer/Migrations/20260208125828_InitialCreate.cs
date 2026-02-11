@@ -1,5 +1,4 @@
-﻿using System;
-using Microsoft.EntityFrameworkCore.Migrations;
+﻿using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -71,6 +70,21 @@ namespace es.vargontoc.nuzlocke.ai.Migrations
                     table.PrimaryKey("PK_CachedTypes", x => x.Id);
                 });
 
+            migrationBuilder.CreateTable(
+                name: "CachedItems",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    NameOrId = table.Column<string>(type: "TEXT", nullable: false),
+                    JsonData = table.Column<string>(type: "TEXT", nullable: false),
+                    CachedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_CachedItems", x => x.Id);
+                });
+
             migrationBuilder.CreateIndex(
                 name: "IX_CachedAbilities_NameOrId",
                 table: "CachedAbilities",
@@ -94,6 +108,12 @@ namespace es.vargontoc.nuzlocke.ai.Migrations
                 table: "CachedTypes",
                 column: "NameOrId",
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_CachedItems_NameOrId",
+                table: "CachedItems",
+                column: "NameOrId",
+                unique: true);
         }
 
         /// <inheritdoc />
@@ -110,6 +130,9 @@ namespace es.vargontoc.nuzlocke.ai.Migrations
 
             migrationBuilder.DropTable(
                 name: "CachedTypes");
+
+            migrationBuilder.DropTable(
+                name: "CachedItems");
         }
     }
 }

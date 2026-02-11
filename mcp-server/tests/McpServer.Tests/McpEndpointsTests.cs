@@ -35,9 +35,9 @@ public class McpEndpointsTests
     {
         // Arrange
         var httpClient = new HttpClient();
-        var logger = NullLogger<es.vargontoc.nuzlocke.ai.Services.PokeApiConnector>.Instance;
+        var logger = NullLogger<es.vargontoc.nuzlocke.ai.Connectors.Impl.PokeApiConnector>.Instance;
         var options = Options.Create(new PokeApiOptions());
-        var connector = new es.vargontoc.nuzlocke.ai.Services.PokeApiConnector(httpClient, logger, options);
+        var connector = new es.vargontoc.nuzlocke.ai.Connectors.Impl.PokeApiConnector(httpClient, logger, options);
 
         // Act
         var result = await PokeApiTools.GetPokemon(connector, "pikachu");
@@ -55,9 +55,9 @@ public class McpEndpointsTests
     {
         // Arrange
         var httpClient = new HttpClient();
-        var logger = NullLogger<es.vargontoc.nuzlocke.ai.Services.PokeApiConnector>.Instance;
+        var logger = NullLogger<es.vargontoc.nuzlocke.ai.Connectors.Impl.PokeApiConnector>.Instance;
         var options = Options.Create(new PokeApiOptions());
-        var connector = new es.vargontoc.nuzlocke.ai.Services.PokeApiConnector(httpClient, logger, options);
+        var connector = new es.vargontoc.nuzlocke.ai.Connectors.Impl.PokeApiConnector(httpClient, logger, options);
 
         // Act
         var result = await PokeApiTools.GetMove(connector, "thunderbolt");
@@ -75,9 +75,9 @@ public class McpEndpointsTests
     {
         // Arrange
         var httpClient = new HttpClient();
-        var logger = NullLogger<es.vargontoc.nuzlocke.ai.Services.PokeApiConnector>.Instance;
+        var logger = NullLogger<es.vargontoc.nuzlocke.ai.Connectors.Impl.PokeApiConnector>.Instance;
         var options = Options.Create(new PokeApiOptions());
-        var connector = new es.vargontoc.nuzlocke.ai.Services.PokeApiConnector(httpClient, logger, options);
+        var connector = new es.vargontoc.nuzlocke.ai.Connectors.Impl.PokeApiConnector(httpClient, logger, options);
 
         // Act
         var result = await PokeApiTools.GetType(connector, "electric");
@@ -93,9 +93,9 @@ public class McpEndpointsTests
     {
         // Arrange
         var httpClient = new HttpClient();
-        var logger = NullLogger<es.vargontoc.nuzlocke.ai.Services.PokeApiConnector>.Instance;
+        var logger = NullLogger<es.vargontoc.nuzlocke.ai.Connectors.Impl.PokeApiConnector>.Instance;
         var options = Options.Create(new PokeApiOptions());
-        var connector = new es.vargontoc.nuzlocke.ai.Services.PokeApiConnector(httpClient, logger, options);
+        var connector = new es.vargontoc.nuzlocke.ai.Connectors.Impl.PokeApiConnector(httpClient, logger, options);
 
         // Act
         var result = await PokeApiTools.GetAbility(connector, "overgrow");
@@ -111,9 +111,9 @@ public class McpEndpointsTests
     {
         // Arrange
         var httpClient = new HttpClient();
-        var logger = NullLogger<es.vargontoc.nuzlocke.ai.Services.PokeApiConnector>.Instance;
+        var logger = NullLogger<es.vargontoc.nuzlocke.ai.Connectors.Impl.PokeApiConnector>.Instance;
         var options = Options.Create(new PokeApiOptions());
-        var connector = new es.vargontoc.nuzlocke.ai.Services.PokeApiConnector(httpClient, logger, options);
+        var connector = new es.vargontoc.nuzlocke.ai.Connectors.Impl.PokeApiConnector(httpClient, logger, options);
 
         // Act
         var result = await PokeApiTools.GetPokemon(connector, "invalidpokemon999");

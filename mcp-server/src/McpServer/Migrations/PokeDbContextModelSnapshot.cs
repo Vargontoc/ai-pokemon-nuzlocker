@@ -116,6 +116,31 @@ namespace es.vargontoc.nuzlocke.ai.Migrations
 
                     b.ToTable("CachedTypes");
                 });
+
+            modelBuilder.Entity("es.vargontoc.nuzlocke.ai.Data.CachedItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CachedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("JsonData")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NameOrId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NameOrId")
+                        .IsUnique();
+
+                    b.ToTable("CachedItems");
+                });
 #pragma warning restore 612, 618
         }
     }

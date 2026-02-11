@@ -1,10 +1,17 @@
+using es.vargontoc.nuzlocke.ai.Agents;
 using es.vargontoc.nuzlocke.ai.Configuration;
+using es.vargontoc.nuzlocke.ai.Connectors;
+using es.vargontoc.nuzlocke.ai.Connectors.Impl;
 using es.vargontoc.nuzlocke.ai.Data;
 using es.vargontoc.nuzlocke.ai.Repositories;
 using es.vargontoc.nuzlocke.ai.Services;
+using es.vargontoc.nuzlocke.ai.Providers;
+using es.vargontoc.nuzlocke.ai.Providers.Impl;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Options;
+using Microsoft.SemanticKernel;
 using ModelContextProtocol.Server;
 using System.Text.Json;
 
@@ -25,6 +32,7 @@ builder.Services.AddScoped<ICacheRepository<CachedPokemon>, PokemonCacheReposito
 builder.Services.AddScoped<ICacheRepository<CachedMove>, MoveCacheRepository>();
 builder.Services.AddScoped<ICacheRepository<CachedType>, TypeCacheRepository>();
 builder.Services.AddScoped<ICacheRepository<CachedAbility>, AbilityCacheRepository>();
+builder.Services.AddScoped<ICacheRepository<CachedItem>, ItemCacheRepository>();
 
 // Register PokeApi connector (direct)
 builder.Services.AddHttpClient<PokeApiConnector>();
@@ -35,6 +43,98 @@ builder.Services.AddScoped<IPokeApiConnector, CachedPokeApiConnector>();
 // Register Nuzlocke state manager
 builder.Services.AddSingleton<IStateManager, StateManager>();
 
+// Register ToolExecutor
+builder.Services.AddScoped<ToolExecutor>();
+
+// Configure AI Provider options
+builder.Services.Configure<AiOptions>(
+    builder.Configuration.GetSection(AiOptions.SectionName));
+
+// Register IAiProvider implementation based on configuration
+var aiOptionsSection = builder.Configuration.GetSection(AiOptions.SectionName);
+var aiProviderName = aiOptionsSection.GetValue<string>("Provider")?.ToLowerInvariant();
+if (aiProviderName == "ollama")
+{
+    builder.Services.AddHttpClient<OllamaAiProvider>();
+    builder.Services.AddScoped<IAiProvider, OllamaAiProvider>();
+}
+else if (aiProviderName == "openai")
+{
+    builder.Services.AddScoped<IAiProvider, OpenAiProvider>();
+}
+else if (aiProviderName == "claude")
+{
+    builder.Services.AddScoped<IAiProvider, ClaudeAiProvider>();
+}
+else
+{
+    // If provider not configured, default to Ollama if base url present, otherwise throw
+    var baseUrl = aiOptionsSection.GetValue<string>("BaseUrl");
+    if (!string.IsNullOrEmpty(baseUrl))
+    {
+        builder.Services.AddHttpClient<OllamaAiProvider>();
+        builder.Services.AddScoped<IAiProvider, OllamaAiProvider>();
+    }
+    else
+    {
+        throw new InvalidOperationException("AI provider not configured. Set AiOptions:Provider to 'Ollama' or 'OpenAI' in appsettings.json");
+    }
+}
+
+// Configure Semantic Kernel with provider-specific setup (without plugins - they're scoped)
+// Register Kernel as scoped so plugins added at runtime can safely reference scoped services
+builder.Services.AddScoped<Kernel>(sp =>
+{
+    var options = sp.GetRequiredService<IOptions<AiOptions>>().Value;
+    var logger = sp.GetRequiredService<ILogger<Program>>();
+
+    logger.LogInformation("=== Semantic Kernel Configuration ===");
+    logger.LogInformation("Provider: {Provider}", options.Provider);
+    logger.LogInformation("Model: {Model}", options.Model);
+    logger.LogInformation("======================================");
+
+    var kernelBuilder = Kernel.CreateBuilder();
+
+    // Add the appropriate chat completion service based on provider
+    switch (options.Provider.ToLower())
+    {
+        case "ollama":
+            kernelBuilder.AddOllamaChatCompletion(
+                modelId: options.Model,
+                endpoint: new Uri(options.BaseUrl));
+            logger.LogInformation("Using Ollama connector at {BaseUrl}", options.BaseUrl);
+            break;
+
+        case "openai":
+            kernelBuilder.AddOpenAIChatCompletion(
+                modelId: options.Model,
+                apiKey: options.ApiKey!);
+            logger.LogInformation("Using OpenAI connector with model {Model}", options.Model);
+            break;
+
+        case "claude":
+            // NOTE: Semantic Kernel doesn't have native Claude support yet
+            // You would need to use Anthropic SDK directly or wait for SK support
+            throw new NotImplementedException(
+                "Claude provider with Semantic Kernel is not yet implemented. " +
+                "Use OpenAI or Ollama for now.");
+
+        default:
+            throw new InvalidOperationException(
+                $"Unknown AI provider: {options.Provider}. " +
+                $"Valid options are: Ollama, OpenAI");
+    }
+
+    // Don't add plugins here - they need scoped services
+    // Plugins will be added in NuzlockeKernelAgent constructor
+
+    return kernelBuilder.Build();
+});
+
+// Register Semantic Kernel agent (scoped to properly handle plugins)
+builder.Services.AddScoped<PokeApiAgent>();
+// Register NuzlockeAgent so it can be injected into minimal API endpoints
+builder.Services.AddScoped<NuzlockeAgent>();
 // Configure MCP Server
 builder.Services
     .AddMcpServer()
@@ -58,6 +158,26 @@ builder.Services.AddHealthChecks()
         timeout: TimeSpan.FromSeconds(3));
 
 var app = builder.Build();
+
+// Global logging middleware to capture unhandled exceptions and response codes
+app.Use(async (context, next) =>
+{
+    var logger = context.RequestServices.GetService<ILogger<Program>>();
+    try
+    {
+        await next();
+
+        if (context.Response.StatusCode >= 400)
+        {
+            logger?.LogWarning("Response {StatusCode} for {Method} {Path}", context.Response.StatusCode, context.Request.Method, context.Request.Path);
+        }
+    }
+    catch (Exception ex)
+    {
+        logger?.LogError(ex, "Unhandled exception processing {Method} {Path}", context.Request.Method, context.Request.Path);
+        throw;
+    }
+});
 
 // Apply migrations
 using (var scope = app.Services.CreateScope())
@@ -106,7 +226,43 @@ app.MapHealthChecks("/health/live", new HealthCheckOptions
 // Map MCP endpoints
 app.MapMcp("/mcp");
 
+// AI Agent endpoint (powered by Semantic Kernel)
+app.MapPost("/agent/advice", async (AdviceRequest request, PokeApiAgent agent, CancellationToken ct) =>
+{
+    var logger = app.Services.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation("POST /agent/advice received: {Question}", request.Question);
+    try
+    {
+        var advice = await agent.GetResponse(request.Question);
+        return Results.Ok(new { question = request.Question, advice });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error handling /agent/advice for question: {Question}", request.Question);
+        return Results.Problem(detail: ex.Message, statusCode: 500);
+    }
+});
+
+app.MapPost("/nuzlocke/advice", async (AdviceRequest request, NuzlockeAgent agent, CancellationToken ct) =>
+{
+    var logger = app.Services.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation("POST /nuzlocke/advice received: {Question}", request.Question);
+    try
+    {
+        var advice = await agent.GetAdviceAsync(request.Question, ct);
+        return Results.Ok(new { question = request.Question, advice });
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error handling /nuzlocke/advice for question: {Question}", request.Question);
+        return Results.Problem(detail: ex.Message, statusCode: 500);
+    }
+});
+
 app.Run();
+
+// Request DTO
+record AdviceRequest(string Question);
 
 // Partial Program class to support WebApplicationFactory in integration tests
 namespace es.vargontoc.nuzlocke.ai

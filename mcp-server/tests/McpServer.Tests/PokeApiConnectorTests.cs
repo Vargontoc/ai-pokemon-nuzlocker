@@ -1,7 +1,6 @@
-using System.Net.Http;
-using System.Threading.Tasks;
 using es.vargontoc.nuzlocke.ai.Configuration;
-using es.vargontoc.nuzlocke.ai.Services;
+using es.vargontoc.nuzlocke.ai.Connectors;
+using es.vargontoc.nuzlocke.ai.Connectors.Impl;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Xunit;

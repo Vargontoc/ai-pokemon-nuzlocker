@@ -1,5 +1,3 @@
-
-using es.vargontoc.nuzlocke.ai.Services;
 using es.vargontoc.nuzlocke.ai.Plugins;
 using Microsoft.SemanticKernel;
 using es.vargontoc.nuzlocke.ai.Connectors;
@@ -41,7 +39,7 @@ namespace es.vargontoc.nuzlocke.ai.Agents
             if (_kernel.Plugins.FirstOrDefault(x => x.Name == "PokeAPI") == null)
             {
                 _logger.LogInformation("Registering PokeAPI plugin in kernel");
-                var plugin = new PokeApiPlugin(_connector, _loggerFactory.CreateLogger<PokeApiPlugin>());
+                var plugin = new PokeApiPlugin(_loggerFactory.CreateLogger<PokeApiPlugin>(), _connector);
                 _kernel.Plugins.AddFromObject(plugin, "PokeAPI");
             }
         }

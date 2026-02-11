@@ -29,6 +29,33 @@ public class PokeApiConnector : IPokeApiConnector
         return await GetResourceAsync<PokemonData>($"{_baseUrl}/pokemon/{nameOrId.ToLower()}");
     }
 
+    public async Task<PokemonSubset?> GetPokemonSubsetAsync(string nameOrId, int movesLimit = 6)
+    {
+        var full = await GetPokemonAsync(nameOrId);
+        if (full == null) return null;
+
+        var subset = new PokemonSubset
+        {
+            Id = full.Id,
+            Name = full.Name,
+            Types = full.Types.Select(t => t.Type.Name).ToList()
+        };
+
+        // map stats
+        foreach (var s in full.Stats)
+        {
+            subset.Stats[s.Stat.Name] = s.BaseStat;
+        }
+
+        // take first N moves
+        subset.MovesBasicos = full.Moves.Take(movesLimit).Select(m => m.Move.Name).ToList();
+
+        // Sprite not modeled in PokemonData currently; leave null
+        subset.SpriteMin = null;
+
+        return subset;
+    }
+
     public async Task<MoveData?> GetMoveAsync(string nameOrId)
     {
         return await GetResourceAsync<MoveData>($"{_baseUrl}/move/{nameOrId.ToLower()}");

@@ -2,7 +2,6 @@ using es.vargontoc.nuzlocke.ai.Models;
 using es.vargontoc.nuzlocke.ai.Providers;
 using es.vargontoc.nuzlocke.ai.Services;
 using Microsoft.SemanticKernel;
-using System.Text.Json;
 
 namespace es.vargontoc.nuzlocke.ai.Agents;
 
@@ -15,7 +14,7 @@ public class NuzlockeAgent
     private readonly IStateManager _stateManager;
     private readonly ToolExecutor _toolExecutor;
     private readonly PokeApiAgent? _pokeApiAgent;
-    private readonly Kernel _kernel;
+    private readonly Kernel? _kernel;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<NuzlockeAgent> _logger;
 
@@ -55,8 +54,8 @@ Be concise but insightful. Prioritize survival and strategic planning. Remember 
         IStateManager stateManager,
         ToolExecutor toolExecutor,
         ILogger<NuzlockeAgent> logger,
-        Kernel kernel,
-        ILoggerFactory loggerFactory,
+        Kernel? kernel = null,
+        ILoggerFactory? loggerFactory = null,
         PokeApiAgent? pokeApiAgent = null)
     {
         _aiProvider = aiProvider;
@@ -64,13 +63,13 @@ Be concise but insightful. Prioritize survival and strategic planning. Remember 
         _toolExecutor = toolExecutor;
         _logger = logger;
         _pokeApiAgent = pokeApiAgent;
-        _kernel = kernel ?? throw new ArgumentNullException(nameof(kernel));
-        _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
+        _kernel = kernel;
+        _loggerFactory = loggerFactory ?? Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance;
 
         // Register Nuzlocke plugin in kernel so the kernel functions can access state
         try
         {
-            if (_kernel.Plugins.FirstOrDefault(p => p.Name == "Nuzlocke") == null)
+            if (_kernel != null && _kernel.Plugins.FirstOrDefault(p => p.Name == "Nuzlocke") == null)
             {
                 _logger.LogInformation("Registering Nuzlocke plugin in kernel");
                 var plugin = new es.vargontoc.nuzlocke.ai.Plugins.NuzlockePlugin(_stateManager);

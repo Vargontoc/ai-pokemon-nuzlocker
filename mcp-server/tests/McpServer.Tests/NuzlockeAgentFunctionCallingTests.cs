@@ -1,5 +1,8 @@
 using es.vargontoc.nuzlocke.ai.Models;
+using es.vargontoc.nuzlocke.ai.Providers;
 using es.vargontoc.nuzlocke.ai.Services;
+using es.vargontoc.nuzlocke.ai.Connectors;
+using es.vargontoc.nuzlocke.ai.Agents;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;

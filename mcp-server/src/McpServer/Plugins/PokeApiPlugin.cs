@@ -1,6 +1,4 @@
 using es.vargontoc.nuzlocke.ai.Connectors;
-using es.vargontoc.nuzlocke.ai.Services;
-using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using System.ComponentModel;
 using System.Text.Json;
@@ -10,18 +8,8 @@ namespace es.vargontoc.nuzlocke.ai.Plugins;
 /// <summary>
 /// Semantic Kernel plugin for PokeAPI data access
 /// </summary>
-public class PokeApiPlugin
+public class PokeApiPlugin(ILogger<PokeApiPlugin> _logger, IPokeApiConnector _pokeApiConnector)
 {
-    private readonly IPokeApiConnector _pokeApiConnector;
-    private readonly ILogger<PokeApiPlugin> _logger;
-    private IPokeApiConnector connector;
-
-    public PokeApiPlugin(IPokeApiConnector pokeApiConnector, ILogger<PokeApiPlugin> logger)
-    {
-        _pokeApiConnector = pokeApiConnector;
-        _logger = logger;
-        _logger.LogDebug("PokeApiPlugin constructed");
-    }
 
     [KernelFunction("get_pokemon")]
     [Description("Get detailed information about a Pokemon including stats, types, abilities, and moves. Use this to analyze Pokemon for strategic decisions.")]

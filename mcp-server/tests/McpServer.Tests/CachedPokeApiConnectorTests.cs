@@ -1,7 +1,7 @@
 using es.vargontoc.nuzlocke.ai.Configuration;
 using es.vargontoc.nuzlocke.ai.Data;
 using es.vargontoc.nuzlocke.ai.Repositories;
-using es.vargontoc.nuzlocke.ai.Services;
+using es.vargontoc.nuzlocke.ai.Connectors.Impl;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -29,6 +29,7 @@ public class CachedPokeApiConnectorTests : IDisposable
         var moveRepo = new MoveCacheRepository(_context);
         var typeRepo = new TypeCacheRepository(_context);
         var abilityRepo = new AbilityCacheRepository(_context);
+        var itemRepo = new ItemCacheRepository(_context);
 
         // Create direct API connector
         var httpClient = new HttpClient();
@@ -39,7 +40,7 @@ public class CachedPokeApiConnectorTests : IDisposable
         // Create cached connector
         var cachedLogger = NullLogger<CachedPokeApiConnector>.Instance;
         _cachedConnector = new CachedPokeApiConnector(
-            apiConnector, pokemonRepo, moveRepo, typeRepo, abilityRepo, cachedLogger);
+            apiConnector, pokemonRepo, moveRepo, typeRepo, abilityRepo, itemRepo, cachedLogger);
     }
 
     [Fact]
@@ -120,6 +121,21 @@ public class CachedPokeApiConnectorTests : IDisposable
 
         // Verify cached
         var cached = await _context.CachedAbilities.FirstOrDefaultAsync(a => a.NameOrId == "overgrow");
+        Assert.NotNull(cached);
+    }
+
+    [Fact]
+    public async Task GetItemAsync_CachesCorrectly()
+    {
+        // Act
+        var result = await _cachedConnector.GetItemAsync("potion");
+
+        // Assert
+        Assert.NotNull(result);
+        Assert.Equal("potion", result.Name);
+
+        // Verify cached
+        var cached = await _context.CachedItems.FirstOrDefaultAsync(i => i.NameOrId == "potion");
         Assert.NotNull(cached);
     }
 

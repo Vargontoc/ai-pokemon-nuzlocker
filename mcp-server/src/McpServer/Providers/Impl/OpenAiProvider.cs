@@ -2,7 +2,6 @@ using es.vargontoc.nuzlocke.ai.Configuration;
 using es.vargontoc.nuzlocke.ai.Models;
 using Microsoft.Extensions.Options;
 using OpenAI.Chat;
-using System.ClientModel;
 using System.Text.Json;
 
 namespace es.vargontoc.nuzlocke.ai.Providers.Impl;

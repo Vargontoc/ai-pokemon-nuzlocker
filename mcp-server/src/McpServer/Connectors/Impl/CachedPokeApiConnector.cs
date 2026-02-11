@@ -61,6 +61,55 @@ public class CachedPokeApiConnector : IPokeApiConnector
         return pokemon;
     }
 
+    public async Task<PokemonSubset?> GetPokemonSubsetAsync(string nameOrId, int movesLimit = 6)
+    {
+        // Try cache first
+        var cached = await _pokemonCache.GetByNameOrIdAsync(nameOrId);
+        PokemonData? full = null;
+        if (cached != null)
+        {
+            _logger.LogInformation("Pokemon '{NameOrId}' found in cache (subset requested)", nameOrId);
+            try
+            {
+                full = JsonSerializer.Deserialize<PokemonData>(cached.JsonData);
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "Failed to deserialize cached Pokemon json for {NameOrId}", nameOrId);
+            }
+        }
+
+        if (full == null)
+        {
+            _logger.LogInformation("Pokemon '{NameOrId}' not in cache (subset), fetching from PokeApi", nameOrId);
+            full = await _apiConnector.GetPokemonAsync(nameOrId);
+            if (full != null)
+            {
+                var jsonData = JsonSerializer.Serialize(full);
+                await _pokemonCache.AddAsync(nameOrId, jsonData);
+            }
+        }
+
+        if (full == null) return null;
+
+        var subset = new PokemonSubset
+        {
+            Id = full.Id,
+            Name = full.Name,
+            Types = full.Types.Select(t => t.Type.Name).ToList(),
+            MovesBasicos = full.Moves.Take(movesLimit).Select(m => m.Move.Name).ToList()
+        };
+
+        foreach (var s in full.Stats)
+        {
+            subset.Stats[s.Stat.Name] = s.BaseStat;
+        }
+
+        subset.SpriteMin = null;
+
+        return subset;
+    }
+
     public async Task<MoveData?> GetMoveAsync(string nameOrId)
     {
         var cached = await _moveCache.GetByNameOrIdAsync(nameOrId);

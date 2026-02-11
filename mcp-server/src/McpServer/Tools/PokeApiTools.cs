@@ -1,6 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
-using es.vargontoc.nuzlocke.ai.Services;
+using es.vargontoc.nuzlocke.ai.Connectors;
 using ModelContextProtocol.Server;
 
 namespace es.vargontoc.nuzlocke.ai.Tools;
@@ -79,6 +79,25 @@ public static class PokeApiTools
         }
 
         return JsonSerializer.Serialize(ability, new JsonSerializerOptions
+        {
+            WriteIndented = true
+        });
+    }
+
+    [McpServerTool]
+    [Description("Get detailed information about an item by name or ID. Returns category, effects, cost, and sprite. Useful for pokeballs, medicines, berries, and held items.")]
+    public static async Task<string> GetItem(
+        IPokeApiConnector connector,
+        [Description("The name or ID of the item (e.g., 'poke-ball', 'potion', or '1')")] string nameOrId)
+    {
+        var item = await connector.GetItemAsync(nameOrId);
+
+        if (item == null)
+        {
+            return JsonSerializer.Serialize(new { error = $"Item '{nameOrId}' not found" });
+        }
+
+        return JsonSerializer.Serialize(item, new JsonSerializerOptions
         {
             WriteIndented = true
         });
