@@ -7,6 +7,7 @@ using es.vargontoc.nuzlocke.ai.Repositories;
 using es.vargontoc.nuzlocke.ai.Services;
 using es.vargontoc.nuzlocke.ai.Providers;
 using es.vargontoc.nuzlocke.ai.Providers.Impl;
+using es.vargontoc.nuzlocke.ai.Models;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -55,6 +56,9 @@ builder.Services.AddScoped<IPokeApiConnector>(sp =>
 
 // Register Nuzlocke state manager
 builder.Services.AddSingleton<IStateManager, StateManager>();
+
+// Register Nuzlocke session manager
+builder.Services.AddSingleton<INuzlockeSessionManager, NuzlockeSessionManager>();
 
 // Register ToolExecutor
 builder.Services.AddScoped<ToolExecutor>();
@@ -259,10 +263,10 @@ app.MapPost("/agent/advice", async (AdviceRequest request, PokeApiAgent agent, C
 app.MapPost("/nuzlocke/advice", async (AdviceRequest request, NuzlockeAgent agent, CancellationToken ct) =>
 {
     var logger = app.Services.GetRequiredService<ILogger<Program>>();
-    logger.LogInformation("POST /nuzlocke/advice received: {Question}", request.Question);
+    logger.LogInformation("POST /nuzlocke/advice received: {Question}, session={SessionId}", request.Question, request.SessionId);
     try
     {
-        var advice = await agent.GetAdviceAsync(request.Question, ct);
+        var advice = await agent.GetAdviceAsync(request.Question, ct, request.SessionId);
         return Results.Ok(new { question = request.Question, advice });
     }
     catch (Exception ex)
@@ -272,10 +276,66 @@ app.MapPost("/nuzlocke/advice", async (AdviceRequest request, NuzlockeAgent agen
     }
 });
 
+// Nuzlocke session management endpoints
+app.MapPost("/nuzlocke/sessions", async (CreateSessionRequest req, INuzlockeSessionManager sessions) =>
+{
+    try
+    {
+        var info = await sessions.CreateSessionAsync(req.Name, req.DirectoryPath);
+        return Results.Created($"/nuzlocke/sessions/{info.Id}", info);
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(detail: ex.Message, statusCode: 400);
+    }
+});
+
+app.MapGet("/nuzlocke/sessions", async (INuzlockeSessionManager sessions) =>
+    Results.Ok(await sessions.ListSessionsAsync()));
+
+app.MapGet("/nuzlocke/sessions/{id}", async (string id, INuzlockeSessionManager sessions) =>
+{
+    var s = await sessions.GetSessionAsync(id);
+    return s == null ? Results.NotFound() : Results.Ok(s);
+});
+
+app.MapDelete("/nuzlocke/sessions/{id}", async (string id, INuzlockeSessionManager sessions) =>
+{
+    var ok = await sessions.DeleteSessionAsync(id);
+    return ok ? Results.NoContent() : Results.NotFound();
+});
+
+app.MapGet("/nuzlocke/sessions/{id}/data", async (string id, INuzlockeSessionManager sessions) =>
+{
+    try
+    {
+        var data = await sessions.LoadSessionDataAsync(id);
+        return Results.Ok(data);
+    }
+    catch (KeyNotFoundException)
+    {
+        return Results.NotFound();
+    }
+});
+
+app.MapPost("/nuzlocke/sessions/{id}/data", async (string id, NuzlockeFileData fileData, INuzlockeSessionManager sessions) =>
+{
+    try
+    {
+        await sessions.SaveSessionDataAsync(id, fileData);
+        return Results.NoContent();
+    }
+    catch (KeyNotFoundException)
+    {
+        return Results.NotFound();
+    }
+});
+
 app.Run();
 
-// Request DTO
-record AdviceRequest(string Question);
+// Request DTOs
+record AdviceRequest(string Question, string? SessionId = null);
+record CreateSessionRequest(string Name, string DirectoryPath);
 
 // Partial Program class to support WebApplicationFactory in integration tests
 namespace es.vargontoc.nuzlocke.ai

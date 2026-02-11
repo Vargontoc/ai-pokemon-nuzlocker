@@ -2,6 +2,7 @@ using es.vargontoc.nuzlocke.ai.Models;
 using es.vargontoc.nuzlocke.ai.Providers;
 using es.vargontoc.nuzlocke.ai.Services;
 using Microsoft.SemanticKernel;
+using System.Text.Json;
 
 namespace es.vargontoc.nuzlocke.ai.Agents;
 
@@ -86,14 +87,16 @@ Be concise but insightful. Prioritize survival and strategic planning. Remember 
     /// Get strategic advice based on user question and current game state
     /// Uses function calling to interact with game state if needed
     /// </summary>
-    public async Task<string> GetAdviceAsync(string userQuestion, CancellationToken cancellationToken = default)
+    public async Task<string> GetAdviceAsync(string userQuestion, CancellationToken cancellationToken = default, string? sessionId = null)
     {
         try
         {
             _logger.LogInformation("Getting advice for question: {Question}", userQuestion);
 
             // Get current game state
-            var state = await _stateManager.GetStateAsync();
+            var state = string.IsNullOrEmpty(sessionId)
+                ? await _stateManager.GetStateAsync()
+                : await _stateManager.GetStateAsync(sessionId);
 
             // Build context from game state
             var stateContext = BuildStateContext(state);
@@ -189,6 +192,39 @@ Provide strategic advice based on the current state and the user's question.";
                 {
                     _logger.LogDebug("Executing tool: {ToolName} (ID: {ToolId})",
                         toolCall.Name, toolCall.Id);
+
+                    // Ensure tool call payload contains sessionId when available
+                    if (!string.IsNullOrEmpty(sessionId))
+                    {
+                        try
+                        {
+                            var argsJson = string.IsNullOrWhiteSpace(toolCall.ArgumentsJson) ? "{}" : toolCall.ArgumentsJson;
+                            using var doc = JsonDocument.Parse(argsJson);
+                            var root = doc.RootElement.Clone();
+                            var dict = new Dictionary<string, JsonElement>();
+                            if (root.ValueKind == JsonValueKind.Object)
+                            {
+                                foreach (var prop in root.EnumerateObject())
+                                {
+                                    dict[prop.Name] = prop.Value.Clone();
+                                }
+                            }
+                            if (!dict.ContainsKey("sessionId"))
+                            {
+                                dict["sessionId"] = JsonDocument.Parse($"\"{sessionId}\"").RootElement;
+                            }
+                            var merged = new Dictionary<string, object?>();
+                            foreach (var kv in dict)
+                            {
+                                merged[kv.Key] = kv.Value.ValueKind == JsonValueKind.String ? kv.Value.GetString() : (object?)kv.Value.ToString();
+                            }
+                            toolCall.ArgumentsJson = JsonSerializer.Serialize(merged);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogDebug(ex, "Failed to inject sessionId into tool arguments; proceeding without it");
+                        }
+                    }
 
                     var result = await _toolExecutor.ExecuteAsync(toolCall);
                     toolResults.Add(result);

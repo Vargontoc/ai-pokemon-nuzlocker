@@ -14,57 +14,95 @@ public class StateManager : IStateManager
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    public StateManager(ILogger<StateManager> logger, IConfiguration configuration)
+    private readonly INuzlockeSessionManager? _sessionManager;
+
+    public StateManager(ILogger<StateManager> logger, IConfiguration configuration, INuzlockeSessionManager? sessionManager = null)
     {
         _logger = logger;
+        _sessionManager = sessionManager;
         _stateFilePath = configuration.GetValue<string>("StateFilePath") ?? "session_state.json";
     }
 
-    public async Task<NuzlockeState> GetStateAsync()
+    public Task<NuzlockeState> GetStateAsync() => GetStateAsync("default");
+
+    public async Task<NuzlockeState> GetStateAsync(string sessionId)
     {
-        await _fileLock.WaitAsync();
-        try
+        if (_sessionManager == null || sessionId == "default")
         {
-            if (!File.Exists(_stateFilePath))
+            await _fileLock.WaitAsync();
+            try
             {
-                _logger.LogInformation("State file not found, creating new state");
-                var newState = new NuzlockeState();
-                await SaveStateInternalAsync(newState);
-                return newState;
+                if (!File.Exists(_stateFilePath))
+                {
+                    _logger.LogInformation("State file not found, creating new state");
+                    var newState = new NuzlockeState();
+                    await SaveStateInternalAsync(newState);
+                    return newState;
+                }
+
+                var json = await File.ReadAllTextAsync(_stateFilePath);
+                var state = JsonSerializer.Deserialize<NuzlockeState>(json, _jsonOptions);
+
+                if (state == null)
+                {
+                    _logger.LogWarning("Failed to deserialize state, creating new state");
+                    return new NuzlockeState();
+                }
+
+                return state;
             }
-
-            var json = await File.ReadAllTextAsync(_stateFilePath);
-            var state = JsonSerializer.Deserialize<NuzlockeState>(json, _jsonOptions);
-
-            if (state == null)
+            catch (Exception ex)
             {
-                _logger.LogWarning("Failed to deserialize state, creating new state");
+                _logger.LogError(ex, "Error reading state file");
                 return new NuzlockeState();
             }
+            finally
+            {
+                _fileLock.Release();
+            }
+        }
 
-            return state;
+        // Use session manager to load per-session file
+        try
+        {
+            var fileData = await _sessionManager.LoadSessionDataAsync(sessionId);
+            return fileData.GameState ?? new NuzlockeState();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error reading state file");
+            _logger.LogError(ex, "Error loading session state for {SessionId}", sessionId);
             return new NuzlockeState();
-        }
-        finally
-        {
-            _fileLock.Release();
         }
     }
 
-    public async Task SaveStateAsync(NuzlockeState state)
+    public Task SaveStateAsync(NuzlockeState state) => SaveStateAsync("default", state);
+
+    public async Task SaveStateAsync(string sessionId, NuzlockeState state)
     {
-        await _fileLock.WaitAsync();
+        if (_sessionManager == null || sessionId == "default")
+        {
+            await _fileLock.WaitAsync();
+            try
+            {
+                await SaveStateInternalAsync(state);
+            }
+            finally
+            {
+                _fileLock.Release();
+            }
+            return;
+        }
+
+        // Use session manager to persist
         try
         {
-            await SaveStateInternalAsync(state);
+            var fileData = await _sessionManager.LoadSessionDataAsync(sessionId);
+            fileData.GameState = state;
+            await _sessionManager.SaveSessionDataAsync(sessionId, fileData);
         }
-        finally
+        catch (Exception ex)
         {
-            _fileLock.Release();
+            _logger.LogError(ex, "Error saving session state for {SessionId}", sessionId);
         }
     }
 
@@ -76,9 +114,11 @@ public class StateManager : IStateManager
         _logger.LogInformation("State saved to {FilePath}", _stateFilePath);
     }
 
-    public async Task<bool> AddToTeamAsync(TeamMember pokemon)
+    public Task<bool> AddToTeamAsync(TeamMember pokemon) => AddToTeamAsync("default", pokemon);
+
+    public async Task<bool> AddToTeamAsync(string sessionId, TeamMember pokemon)
     {
-        var state = await GetStateAsync();
+        var state = await GetStateAsync(sessionId);
 
         if (state.Team.Count >= 6)
         {
@@ -93,15 +133,18 @@ public class StateManager : IStateManager
         }
 
         state.Team.Add(pokemon);
-        await SaveStateAsync(state);
+        await SaveStateAsync(sessionId, state);
 
         _logger.LogInformation("Added {Pokemon} ({Species}) to team", pokemon.Nickname, pokemon.Species);
         return true;
     }
 
-    public async Task<bool> MarkAsDeadAsync(string nickname, string deathLocation, string causeOfDeath)
+    public Task<bool> MarkAsDeadAsync(string nickname, string deathLocation, string causeOfDeath)
+        => MarkAsDeadAsync("default", nickname, deathLocation, causeOfDeath);
+
+    public async Task<bool> MarkAsDeadAsync(string sessionId, string nickname, string deathLocation, string causeOfDeath)
     {
-        var state = await GetStateAsync();
+        var state = await GetStateAsync(sessionId);
 
         var teamMember = state.Team.FirstOrDefault(p =>
             p.Nickname.Equals(nickname, StringComparison.OrdinalIgnoreCase));
@@ -128,16 +171,18 @@ public class StateManager : IStateManager
         };
 
         state.DeadPokemon.Add(deadPokemon);
-        await SaveStateAsync(state);
+        await SaveStateAsync(sessionId, state);
 
         _logger.LogInformation("Marked {Pokemon} ({Species}) as dead at {Location}",
             nickname, teamMember.Species, deathLocation);
         return true;
     }
 
-    public async Task<bool> MoveToPCAsync(string nickname)
+    public Task<bool> MoveToPCAsync(string nickname) => MoveToPCAsync("default", nickname);
+
+    public async Task<bool> MoveToPCAsync(string sessionId, string nickname)
     {
-        var state = await GetStateAsync();
+        var state = await GetStateAsync(sessionId);
 
         var teamMember = state.Team.FirstOrDefault(p =>
             p.Nickname.Equals(nickname, StringComparison.OrdinalIgnoreCase));
@@ -163,16 +208,19 @@ public class StateManager : IStateManager
         };
 
         state.PCStorage.Add(storedPokemon);
-        await SaveStateAsync(state);
+        await SaveStateAsync(sessionId, state);
 
         _logger.LogInformation("Moved {Pokemon} ({Species}) to PC storage",
             nickname, teamMember.Species);
         return true;
     }
 
-    public async Task<bool> RecordEncounterAsync(string location, string? capturedSpecies = null, string? capturedNickname = null)
+    public Task<bool> RecordEncounterAsync(string location, string? capturedSpecies = null, string? capturedNickname = null)
+        => RecordEncounterAsync("default", location, capturedSpecies, capturedNickname);
+
+    public async Task<bool> RecordEncounterAsync(string sessionId, string location, string? capturedSpecies = null, string? capturedNickname = null)
     {
-        var state = await GetStateAsync();
+        var state = await GetStateAsync(sessionId);
 
         if (state.Encounters.ContainsKey(location))
         {
@@ -190,7 +238,7 @@ public class StateManager : IStateManager
         };
 
         state.Encounters[location] = encounter;
-        await SaveStateAsync(state);
+        await SaveStateAsync(sessionId, state);
 
         _logger.LogInformation("Recorded encounter at {Location}: {Species}",
             location, capturedSpecies ?? "none");

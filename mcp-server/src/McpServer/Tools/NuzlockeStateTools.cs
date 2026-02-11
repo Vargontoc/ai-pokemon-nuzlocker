@@ -17,11 +17,13 @@ public static class NuzlockeStateTools
 
     [McpServerTool]
     [Description("Get the complete current state of the Nuzlocke run, including team, dead Pokemon, PC storage, and encounters")]
-    public static async Task<string> GetGameState(IStateManager stateManager)
+    public static async Task<string> GetGameState(IStateManager stateManager, string? sessionId = null)
     {
         try
         {
-            var state = await stateManager.GetStateAsync();
+            var state = string.IsNullOrEmpty(sessionId)
+                ? await stateManager.GetStateAsync()
+                : await stateManager.GetStateAsync(sessionId);
             return JsonSerializer.Serialize(state, _jsonOptions);
         }
         catch (Exception ex)
@@ -34,6 +36,7 @@ public static class NuzlockeStateTools
     [Description("Add a Pokemon to the current team (maximum 6 Pokemon allowed)")]
     public static async Task<string> AddToTeam(
         IStateManager stateManager,
+        string? sessionId,
         [Description("Nickname for the Pokemon (required for Nuzlocke)")] string nickname,
         [Description("Species name (e.g., 'pikachu')")] string species,
         [Description("Current level")] int level,
@@ -58,7 +61,9 @@ public static class NuzlockeStateTools
                 CaughtDate = DateTime.UtcNow
             };
 
-            var success = await stateManager.AddToTeamAsync(pokemon);
+            var success = string.IsNullOrEmpty(sessionId)
+                ? await stateManager.AddToTeamAsync(pokemon)
+                : await stateManager.AddToTeamAsync(sessionId, pokemon);
 
             if (success)
             {
@@ -66,7 +71,7 @@ public static class NuzlockeStateTools
                 {
                     success = true,
                     message = $"{nickname} ({species}) added to team successfully",
-                    teamSize = (await stateManager.GetStateAsync()).Team.Count
+                    teamSize = (await (string.IsNullOrEmpty(sessionId) ? stateManager.GetStateAsync() : stateManager.GetStateAsync(sessionId))).Team.Count
                 }, _jsonOptions);
             }
             else
@@ -88,17 +93,22 @@ public static class NuzlockeStateTools
     [Description("Mark a Pokemon as dead and move it to the graveyard (Nuzlocke rule: fainted Pokemon are considered dead)")]
     public static async Task<string> MarkAsDead(
         IStateManager stateManager,
+        string? sessionId,
         [Description("Nickname of the Pokemon that died")] string nickname,
         [Description("Location where the Pokemon died")] string deathLocation,
         [Description("Cause of death (e.g., 'Defeated by Gym Leader's Machamp')")] string causeOfDeath)
     {
         try
         {
-            var success = await stateManager.MarkAsDeadAsync(nickname, deathLocation, causeOfDeath);
+            var success = string.IsNullOrEmpty(sessionId)
+                ? await stateManager.MarkAsDeadAsync(nickname, deathLocation, causeOfDeath)
+                : await stateManager.MarkAsDeadAsync(sessionId, nickname, deathLocation, causeOfDeath);
 
             if (success)
             {
-                var state = await stateManager.GetStateAsync();
+                var state = string.IsNullOrEmpty(sessionId)
+                    ? await stateManager.GetStateAsync()
+                    : await stateManager.GetStateAsync(sessionId);
                 var deadPokemon = state.DeadPokemon.Last();
 
                 return JsonSerializer.Serialize(new
@@ -135,15 +145,20 @@ public static class NuzlockeStateTools
     [Description("Move a Pokemon from the team to PC storage")]
     public static async Task<string> MoveToPC(
         IStateManager stateManager,
+        string? sessionId,
         [Description("Nickname of the Pokemon to move to PC")] string nickname)
     {
         try
         {
-            var success = await stateManager.MoveToPCAsync(nickname);
+            var success = string.IsNullOrEmpty(sessionId)
+                ? await stateManager.MoveToPCAsync(nickname)
+                : await stateManager.MoveToPCAsync(sessionId, nickname);
 
             if (success)
             {
-                var state = await stateManager.GetStateAsync();
+                var state = string.IsNullOrEmpty(sessionId)
+                    ? await stateManager.GetStateAsync()
+                    : await stateManager.GetStateAsync(sessionId);
 
                 return JsonSerializer.Serialize(new
                 {
@@ -172,16 +187,23 @@ public static class NuzlockeStateTools
     [Description("Record an encounter at a specific location (Nuzlocke rule: only one Pokemon can be caught per route/location)")]
     public static async Task<string> RecordEncounter(
         IStateManager stateManager,
+        string? sessionId,
         [Description("Name of the location/route (e.g., 'Route 1', 'Viridian Forest')")] string location,
-        [Description("Species caught at this location (null if none caught)")] string? capturedSpecies = null,
-        [Description("Nickname given to captured Pokemon (null if none caught)")] string? capturedNickname = null)
+        [Description("Species caught at this location (null if none caught) ")] string? capturedSpecies = null,
+        [Description("Nickname given to captured Pokemon (null if none caught) ")] string? capturedNickname = null)
     {
         try
         {
-            var success = await stateManager.RecordEncounterAsync(
-                location,
-                capturedSpecies?.ToLower(),
-                capturedNickname);
+            var success = string.IsNullOrEmpty(sessionId)
+                ? await stateManager.RecordEncounterAsync(
+                    location,
+                    capturedSpecies?.ToLower(),
+                    capturedNickname)
+                : await stateManager.RecordEncounterAsync(
+                    sessionId,
+                    location,
+                    capturedSpecies?.ToLower(),
+                    capturedNickname);
 
             if (success)
             {

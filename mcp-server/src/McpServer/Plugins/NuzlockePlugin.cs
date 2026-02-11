@@ -21,9 +21,11 @@ public class NuzlockePlugin
     [KernelFunction("get_game_state")]
     [Description("Get the current Nuzlocke game state including team, PC storage, deaths, and encounters")]
     [return: Description("JSON containing current team, PC storage, dead Pokemon, and used encounters")]
-    public async Task<string> GetGameStateAsync()
+    public async Task<string> GetGameStateAsync(string? sessionId = null)
     {
-        var state = await _stateManager.GetStateAsync();
+        var state = string.IsNullOrEmpty(sessionId)
+            ? await _stateManager.GetStateAsync()
+            : await _stateManager.GetStateAsync(sessionId);
         return JsonSerializer.Serialize(new
         {
             team = state.Team,
@@ -37,6 +39,7 @@ public class NuzlockePlugin
     [Description("Add a new Pokemon to the active team (max 6)")]
     [return: Description("Success message or error")]
     public async Task<string> AddToTeamAsync(
+        string? sessionId,
         [Description("Pokemon species name (e.g., 'pikachu', 'charizard')")] string species,
         [Description("Nickname given to the Pokemon")] string nickname,
         [Description("Pokemon level")] int level,
@@ -44,7 +47,9 @@ public class NuzlockePlugin
         [Description("Current HP")] int? currentHp = null,
         [Description("Maximum HP")] int? maxHp = null)
     {
-        var state = await _stateManager.GetStateAsync();
+        var state = string.IsNullOrEmpty(sessionId)
+            ? await _stateManager.GetStateAsync()
+            : await _stateManager.GetStateAsync(sessionId);
 
         if (state.Team.Count >= 6)
         {
@@ -62,7 +67,14 @@ public class NuzlockePlugin
         };
 
         state.Team.Add(pokemon);
-        await _stateManager.SaveStateAsync(state);
+        if (string.IsNullOrEmpty(sessionId))
+        {
+            await _stateManager.SaveStateAsync(state);
+        }
+        else
+        {
+            await _stateManager.SaveStateAsync(sessionId, state);
+        }
 
         return JsonSerializer.Serialize(new { success = true, message = $"Added {nickname} to team" });
     }
@@ -71,11 +83,14 @@ public class NuzlockePlugin
     [Description("Mark a Pokemon as dead/fainted (permanent in Nuzlocke rules)")]
     [return: Description("Success message or error")]
     public async Task<string> MarkAsDeadAsync(
+        string? sessionId,
         [Description("Nickname of the Pokemon that died")] string nickname,
         [Description("Location where the Pokemon died")] string location,
         [Description("Cause of death description")] string causeOfDeath)
     {
-        var state = await _stateManager.GetStateAsync();
+        var state = string.IsNullOrEmpty(sessionId)
+            ? await _stateManager.GetStateAsync()
+            : await _stateManager.GetStateAsync(sessionId);
 
         var pokemon = state.Team.FirstOrDefault(p => p.Nickname.Equals(nickname, StringComparison.OrdinalIgnoreCase));
         if (pokemon == null)
@@ -98,7 +113,14 @@ public class NuzlockePlugin
         state.DeadPokemon.Add(deadPokemon);
         state.Team.Remove(pokemon);
 
-        await _stateManager.SaveStateAsync(state);
+        if (string.IsNullOrEmpty(sessionId))
+        {
+            await _stateManager.SaveStateAsync(state);
+        }
+        else
+        {
+            await _stateManager.SaveStateAsync(sessionId, state);
+        }
 
         return JsonSerializer.Serialize(new
         {
@@ -111,9 +133,12 @@ public class NuzlockePlugin
     [Description("Move a Pokemon from the active team to PC storage")]
     [return: Description("Success message or error")]
     public async Task<string> MoveToPcAsync(
+        string? sessionId,
         [Description("Nickname of the Pokemon to move to PC")] string nickname)
     {
-        var state = await _stateManager.GetStateAsync();
+        var state = string.IsNullOrEmpty(sessionId)
+            ? await _stateManager.GetStateAsync()
+            : await _stateManager.GetStateAsync(sessionId);
 
         var pokemon = state.Team.FirstOrDefault(p => p.Nickname.Equals(nickname, StringComparison.OrdinalIgnoreCase));
         if (pokemon == null)
@@ -135,7 +160,14 @@ public class NuzlockePlugin
         state.PCStorage.Add(storedPokemon);
         state.Team.Remove(pokemon);
 
-        await _stateManager.SaveStateAsync(state);
+        if (string.IsNullOrEmpty(sessionId))
+        {
+            await _stateManager.SaveStateAsync(state);
+        }
+        else
+        {
+            await _stateManager.SaveStateAsync(sessionId, state);
+        }
 
         return JsonSerializer.Serialize(new
         {
@@ -148,11 +180,14 @@ public class NuzlockePlugin
     [Description("Record a route/area encounter (Nuzlocke rule: only first Pokemon per route can be caught)")]
     [return: Description("Success message confirming the encounter was recorded")]
     public async Task<string> RecordEncounterAsync(
+        string? sessionId,
         [Description("Location/route name where the encounter happened")] string location,
         [Description("Pokemon species encountered")] string? capturedSpecies = null,
         [Description("Nickname given to captured Pokemon")] string? capturedNickname = null)
     {
-        var state = await _stateManager.GetStateAsync();
+        var state = string.IsNullOrEmpty(sessionId)
+            ? await _stateManager.GetStateAsync()
+            : await _stateManager.GetStateAsync(sessionId);
 
         if (state.Encounters.ContainsKey(location))
         {
@@ -172,7 +207,14 @@ public class NuzlockePlugin
             EncounterDate = DateTime.UtcNow
         };
 
-        await _stateManager.SaveStateAsync(state);
+        if (string.IsNullOrEmpty(sessionId))
+        {
+            await _stateManager.SaveStateAsync(state);
+        }
+        else
+        {
+            await _stateManager.SaveStateAsync(sessionId, state);
+        }
 
         var message = !string.IsNullOrEmpty(capturedSpecies)
             ? $"Recorded encounter at {location}: Caught {capturedNickname} ({capturedSpecies})"

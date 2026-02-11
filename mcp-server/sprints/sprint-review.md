@@ -46,14 +46,41 @@
   - [x] Añadir tests que verifiquen TTL y comportamiento de expiración.
     - 7 unit tests en `CachedPokeApiConnectorMemoryCacheTests`: L1 hit, L2 hit con promoción, TTL expiración, TTL=0, full miss, null handling, cross-entity.
 
+- **Nuzlocke management**
+  - Resumen: implementar gestión multi-sesión de Nuzlocke con registro central, archivos por sesión y endpoints HTTP para CRUD de sesiones y sus datos.
+
+  - Entregables implementados:
+    - `INuzlockeSessionManager` + `NuzlockeSessionManager` implementados y registrados en DI.
+    - Persistencia por sesión: archivo oculto `.nuzlocke` en el directorio de la sesión y registro central `nuzlocke_registry.json`.
+    - Control de concurrencia por sesión usando `SemaphoreSlim` en `NuzlockeSessionManager`.
+    - Endpoints HTTP añadidos en `Program.cs`:
+      - `POST /nuzlocke/sessions` — crear sesión (`CreateSessionRequest`)
+      - `GET /nuzlocke/sessions` — listar sesiones
+      - `GET /nuzlocke/sessions/{id}` — obtener metadata de sesión
+      - `DELETE /nuzlocke/sessions/{id}` — eliminar sesión
+      - `GET /nuzlocke/sessions/{id}/data` — cargar `.nuzlocke` (NuzlockeFileData)
+      - `POST /nuzlocke/sessions/{id}/data` — guardar `.nuzlocke`
+    - `StateManager` refactorizado para soportar overloads con `sessionId` y delegar a `INuzlockeSessionManager` cuando corresponde.
+    - Kernel/tools/plugin/agent actualizados para ser `sessionId`-aware:
+      - `NuzlockeStateTools` (MCP tools) ahora aceptan `sessionId` opcional.
+      - `ToolExecutor` propaga `sessionId` desde los argumentos de la llamada a las operaciones de estado.
+      - `NuzlockePlugin` funciones del kernel aceptan `sessionId` opcional y usan las sobrecargas de `IStateManager`.
+      - `NuzlockeAgent.GetAdviceAsync` acepta `sessionId` opcional y lo inyecta en `ToolCall` antes de ejecutar herramientas.
+    - Tests unitarios añadidos:
+      - `tests/McpServer.Tests/NuzlockeSessionManagerTests.cs` — cubre crear, listar, cargar, guardar y borrar sesiones (.nuzlocke file lifecycle).
+
+  - Estado actual y criterios de aceptación:
+    - Endpoints implementados y registrados en `Program.cs` — COMPLETADO.
+    - `NuzlockeSessionManager` implementado con bloqueo por sesión — COMPLETADO.
+    - Tests unitarios para el manager — COMPLETADO (ver `NuzlockeSessionManagerTests`).
+    - Integración con `StateManager` y tools/agent/plugin para propagar `sessionId` — COMPLETADO.
+    - Tests del proyecto: todos los tests pasan en local (68 tests, 0 fallos).
+
 - **Context memory**
   - [ ] Diseñar modelo: `game_state` (persistente por `nuzlockeId`) y `battle_context` (temporal durante combate).
   - [ ] Implementar persistencia ligera (in-memory con opción a persistir en SQLite) y políticas de truncado por tokens.
   - [ ] Añadir tests de integración que simulen sesiones largas y combates.
 
-- **Session management**
-  - [ ] Definir API: `POST /nuzlocke`, `GET /nuzlocke/{id}`, `DELETE /nuzlocke/{id}`.
-  - [ ] Implementar gestión concurrente de varias sesiones y pruebas de carga básicas.
 
 - **NuzlockeAgent — Tests**
   - [ ] Test: ciclo sin llamadas a herramientas (respuesta directa).

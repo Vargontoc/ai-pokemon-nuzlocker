@@ -76,7 +76,21 @@ public class ToolExecutor
 
     private async Task<ToolCallResult> ExecuteGetGameStateAsync(ToolCall toolCall)
     {
-        var state = await _stateManager.GetStateAsync();
+        // Try to parse optional sessionId from arguments
+        string? sessionId = null;
+        try
+        {
+            var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(toolCall.ArgumentsJson) ? "{}" : toolCall.ArgumentsJson);
+            if (doc.RootElement.TryGetProperty("sessionId", out var sidEl) && sidEl.ValueKind == JsonValueKind.String)
+            {
+                sessionId = sidEl.GetString();
+            }
+        }
+        catch { }
+
+        var state = string.IsNullOrEmpty(sessionId)
+            ? await _stateManager.GetStateAsync()
+            : await _stateManager.GetStateAsync(sessionId);
 
         return new ToolCallResult
         {
@@ -108,7 +122,9 @@ public class ToolExecutor
                 : args.Moves.Split(',').Select(m => m.Trim()).ToList()
         };
 
-        var success = await _stateManager.AddToTeamAsync(member);
+        var success = string.IsNullOrEmpty(args?.SessionId)
+            ? await _stateManager.AddToTeamAsync(member)
+            : await _stateManager.AddToTeamAsync(args.SessionId, member);
 
         return new ToolCallResult
         {
@@ -133,10 +149,16 @@ public class ToolExecutor
             throw new InvalidOperationException("Invalid arguments for mark_as_dead");
         }
 
-        var success = await _stateManager.MarkAsDeadAsync(
-            args.Nickname,
-            args.DeathLocation,
-            args.CauseOfDeath);
+        var success = string.IsNullOrEmpty(args?.SessionId)
+            ? await _stateManager.MarkAsDeadAsync(
+                args.Nickname,
+                args.DeathLocation,
+                args.CauseOfDeath)
+            : await _stateManager.MarkAsDeadAsync(
+                args.SessionId,
+                args.Nickname,
+                args.DeathLocation,
+                args.CauseOfDeath);
 
         return new ToolCallResult
         {
@@ -161,7 +183,14 @@ public class ToolExecutor
             throw new InvalidOperationException("Invalid arguments for move_to_pc");
         }
 
-        await _stateManager.MoveToPCAsync(args.Nickname);
+        if (string.IsNullOrEmpty(args?.SessionId))
+        {
+            await _stateManager.MoveToPCAsync(args!.Nickname);
+        }
+        else
+        {
+            await _stateManager.MoveToPCAsync(args.SessionId, args.Nickname);
+        }
 
         return new ToolCallResult
         {
@@ -184,10 +213,16 @@ public class ToolExecutor
             throw new InvalidOperationException("Invalid arguments for record_encounter");
         }
 
-        var success = await _stateManager.RecordEncounterAsync(
-            args.Location,
-            args.CapturedSpecies,
-            args.CapturedNickname);
+        var success = string.IsNullOrEmpty(args?.SessionId)
+            ? await _stateManager.RecordEncounterAsync(
+                args.Location,
+                args.CapturedSpecies,
+                args.CapturedNickname)
+            : await _stateManager.RecordEncounterAsync(
+                args.SessionId,
+                args.Location,
+                args.CapturedSpecies,
+                args.CapturedNickname);
 
         return new ToolCallResult
         {
@@ -214,6 +249,7 @@ public class ToolExecutor
         public int? CurrentHP { get; set; }
         public int? MaxHP { get; set; }
         public string? Moves { get; set; }
+        public string? SessionId { get; set; }
     }
 
     private class MarkAsDeadArgs
@@ -221,11 +257,13 @@ public class ToolExecutor
         public string Nickname { get; set; } = string.Empty;
         public string DeathLocation { get; set; } = string.Empty;
         public string CauseOfDeath { get; set; } = string.Empty;
+        public string? SessionId { get; set; }
     }
 
     private class MoveToPcArgs
     {
         public string Nickname { get; set; } = string.Empty;
+        public string? SessionId { get; set; }
     }
 
     private class RecordEncounterArgs
@@ -233,6 +271,7 @@ public class ToolExecutor
         public string Location { get; set; } = string.Empty;
         public string? CapturedSpecies { get; set; }
         public string? CapturedNickname { get; set; }
+        public string? SessionId { get; set; }
     }
 
     private async Task<ToolCallResult> ExecuteGetPokemonAsync(ToolCall toolCall)
@@ -363,5 +402,6 @@ public class ToolExecutor
     private class PokeApiArgs
     {
         public string NameOrId { get; set; } = string.Empty;
+        public string? SessionId { get; set; }
     }
 }
