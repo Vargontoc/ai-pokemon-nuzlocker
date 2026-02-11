@@ -21,6 +21,9 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<PokeApiOptions>(
     builder.Configuration.GetSection(PokeApiOptions.SectionName));
 
+// Register in-memory cache (L1 for PokeAPI data)
+builder.Services.AddMemoryCache();
+
 // Register SQLite database
 var connectionString = builder.Configuration.GetConnectionString("Database")
     ?? "Data Source=pokecache.db";
@@ -37,8 +40,18 @@ builder.Services.AddScoped<ICacheRepository<CachedItem>, ItemCacheRepository>();
 // Register PokeApi connector (direct)
 builder.Services.AddHttpClient<PokeApiConnector>();
 
-// Register cached connector as IPokeApiConnector
-builder.Services.AddScoped<IPokeApiConnector, CachedPokeApiConnector>();
+// Register cached connector as IPokeApiConnector (factory to inject concrete PokeApiConnector as inner)
+builder.Services.AddScoped<IPokeApiConnector>(sp =>
+    new CachedPokeApiConnector(
+        sp.GetRequiredService<PokeApiConnector>(),
+        sp.GetRequiredService<ICacheRepository<CachedPokemon>>(),
+        sp.GetRequiredService<ICacheRepository<CachedMove>>(),
+        sp.GetRequiredService<ICacheRepository<CachedType>>(),
+        sp.GetRequiredService<ICacheRepository<CachedAbility>>(),
+        sp.GetRequiredService<ICacheRepository<CachedItem>>(),
+        sp.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>(),
+        sp.GetRequiredService<ILogger<CachedPokeApiConnector>>(),
+        sp.GetRequiredService<IOptions<PokeApiOptions>>()));
 
 // Register Nuzlocke state manager
 builder.Services.AddSingleton<IStateManager, StateManager>();

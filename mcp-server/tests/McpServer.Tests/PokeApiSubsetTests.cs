@@ -3,6 +3,7 @@ using es.vargontoc.nuzlocke.ai.Configuration;
 using es.vargontoc.nuzlocke.ai.Data;
 using es.vargontoc.nuzlocke.ai.Repositories;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -35,8 +36,11 @@ public class PokeApiSubsetTests : IDisposable
         var apiConnector = new PokeApiConnector(httpClient, apiLogger, pokeApiOptions);
 
         var cachedLogger = NullLogger<CachedPokeApiConnector>.Instance;
+        var memoryCache = new MemoryCache(new MemoryCacheOptions());
+        var cachedOptions = Options.Create(new PokeApiOptions { MemoryCacheTtlMinutes = 60 });
         _cachedConnector = new CachedPokeApiConnector(
-            apiConnector, pokemonRepo, moveRepo, typeRepo, abilityRepo, itemRepo, cachedLogger);
+            apiConnector, pokemonRepo, moveRepo, typeRepo, abilityRepo, itemRepo,
+            memoryCache, cachedLogger, cachedOptions);
     }
 
     [Fact]

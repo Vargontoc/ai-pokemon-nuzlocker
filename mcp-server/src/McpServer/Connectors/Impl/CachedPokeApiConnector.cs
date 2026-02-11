@@ -1,7 +1,10 @@
 using System.Text.Json;
+using es.vargontoc.nuzlocke.ai.Configuration;
 using es.vargontoc.nuzlocke.ai.Data;
 using es.vargontoc.nuzlocke.ai.Models;
 using es.vargontoc.nuzlocke.ai.Repositories;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Options;
 
 namespace es.vargontoc.nuzlocke.ai.Connectors.Impl;
 
@@ -13,16 +16,20 @@ public class CachedPokeApiConnector : IPokeApiConnector
     private readonly ICacheRepository<CachedType> _typeCache;
     private readonly ICacheRepository<CachedAbility> _abilityCache;
     private readonly ICacheRepository<CachedItem> _itemCache;
+    private readonly IMemoryCache _memoryCache;
     private readonly ILogger<CachedPokeApiConnector> _logger;
+    private readonly TimeSpan _ttl;
 
     public CachedPokeApiConnector(
-        PokeApiConnector apiConnector,
+        IPokeApiConnector apiConnector,
         ICacheRepository<CachedPokemon> pokemonCache,
         ICacheRepository<CachedMove> moveCache,
         ICacheRepository<CachedType> typeCache,
         ICacheRepository<CachedAbility> abilityCache,
         ICacheRepository<CachedItem> itemCache,
-        ILogger<CachedPokeApiConnector> logger)
+        IMemoryCache memoryCache,
+        ILogger<CachedPokeApiConnector> logger,
+        IOptions<PokeApiOptions> options)
     {
         _apiConnector = apiConnector;
         _pokemonCache = pokemonCache;
@@ -30,66 +37,23 @@ public class CachedPokeApiConnector : IPokeApiConnector
         _typeCache = typeCache;
         _abilityCache = abilityCache;
         _itemCache = itemCache;
+        _memoryCache = memoryCache;
         _logger = logger;
+        _ttl = TimeSpan.FromMinutes(options.Value.MemoryCacheTtlMinutes);
     }
 
-    public async Task<PokemonData?> GetPokemonAsync(string nameOrId)
+    public Task<PokemonData?> GetPokemonAsync(string nameOrId)
     {
-        // 1. Try SQLite cache first
-        var cached = await _pokemonCache.GetByNameOrIdAsync(nameOrId);
-        if (cached != null)
-        {
-            _logger.LogInformation("Pokemon '{NameOrId}' found in cache", nameOrId);
-            return JsonSerializer.Deserialize<PokemonData>(cached.JsonData);
-        }
-
-        // 2. Not in cache, fetch from PokeApi
-        _logger.LogInformation("Pokemon '{NameOrId}' not in cache, fetching from PokeApi", nameOrId);
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        var pokemon = await _apiConnector.GetPokemonAsync(nameOrId);
-        sw.Stop();
-        _logger.LogInformation("Fetched Pokemon '{NameOrId}' from PokeApi in {Ms}ms", nameOrId, sw.Elapsed.TotalMilliseconds);
-
-        // 3. If found, cache it
-        if (pokemon != null)
-        {
-            var jsonData = JsonSerializer.Serialize(pokemon);
-            await _pokemonCache.AddAsync(nameOrId, jsonData);
-            _logger.LogInformation("Pokemon '{NameOrId}' cached successfully (size={Bytes} bytes)", nameOrId, System.Text.Encoding.UTF8.GetByteCount(jsonData));
-        }
-
-        return pokemon;
+        return GetOrFetchAsync<PokemonData, CachedPokemon>(
+            "Pokemon", nameOrId, _pokemonCache,
+            _apiConnector.GetPokemonAsync,
+            cached => cached.JsonData,
+            _pokemonCache.AddAsync);
     }
 
     public async Task<PokemonSubset?> GetPokemonSubsetAsync(string nameOrId, int movesLimit = 6)
     {
-        // Try cache first
-        var cached = await _pokemonCache.GetByNameOrIdAsync(nameOrId);
-        PokemonData? full = null;
-        if (cached != null)
-        {
-            _logger.LogInformation("Pokemon '{NameOrId}' found in cache (subset requested)", nameOrId);
-            try
-            {
-                full = JsonSerializer.Deserialize<PokemonData>(cached.JsonData);
-            }
-            catch (JsonException ex)
-            {
-                _logger.LogWarning(ex, "Failed to deserialize cached Pokemon json for {NameOrId}", nameOrId);
-            }
-        }
-
-        if (full == null)
-        {
-            _logger.LogInformation("Pokemon '{NameOrId}' not in cache (subset), fetching from PokeApi", nameOrId);
-            full = await _apiConnector.GetPokemonAsync(nameOrId);
-            if (full != null)
-            {
-                var jsonData = JsonSerializer.Serialize(full);
-                await _pokemonCache.AddAsync(nameOrId, jsonData);
-            }
-        }
-
+        var full = await GetPokemonAsync(nameOrId);
         if (full == null) return null;
 
         var subset = new PokemonSubset
@@ -106,103 +70,125 @@ public class CachedPokeApiConnector : IPokeApiConnector
         }
 
         subset.SpriteMin = null;
-
         return subset;
     }
 
-    public async Task<MoveData?> GetMoveAsync(string nameOrId)
+    public Task<MoveData?> GetMoveAsync(string nameOrId)
     {
-        var cached = await _moveCache.GetByNameOrIdAsync(nameOrId);
-        if (cached != null)
-        {
-            _logger.LogInformation("Move '{NameOrId}' found in cache", nameOrId);
-            return JsonSerializer.Deserialize<MoveData>(cached.JsonData);
-        }
-        _logger.LogInformation("Move '{NameOrId}' not in cache, fetching from PokeApi", nameOrId);
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        var move = await _apiConnector.GetMoveAsync(nameOrId);
-        sw.Stop();
-        _logger.LogInformation("Fetched Move '{NameOrId}' from PokeApi in {Ms}ms", nameOrId, sw.Elapsed.TotalMilliseconds);
-
-        if (move != null)
-        {
-            var jsonData = JsonSerializer.Serialize(move);
-            await _moveCache.AddAsync(nameOrId, jsonData);
-            _logger.LogInformation("Move '{NameOrId}' cached successfully (size={Bytes} bytes)", nameOrId, System.Text.Encoding.UTF8.GetByteCount(jsonData));
-        }
-
-        return move;
+        return GetOrFetchAsync<MoveData, CachedMove>(
+            "Move", nameOrId, _moveCache,
+            _apiConnector.GetMoveAsync,
+            cached => cached.JsonData,
+            _moveCache.AddAsync);
     }
 
-    public async Task<TypeData?> GetTypeAsync(string nameOrId)
+    public Task<TypeData?> GetTypeAsync(string nameOrId)
     {
-        var cached = await _typeCache.GetByNameOrIdAsync(nameOrId);
-        if (cached != null)
-        {
-            _logger.LogInformation("Type '{NameOrId}' found in cache", nameOrId);
-            return JsonSerializer.Deserialize<TypeData>(cached.JsonData);
-        }
-        _logger.LogInformation("Type '{NameOrId}' not in cache, fetching from PokeApi", nameOrId);
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        var type = await _apiConnector.GetTypeAsync(nameOrId);
-        sw.Stop();
-        _logger.LogInformation("Fetched Type '{NameOrId}' from PokeApi in {Ms}ms", nameOrId, sw.Elapsed.TotalMilliseconds);
-
-        if (type != null)
-        {
-            var jsonData = JsonSerializer.Serialize(type);
-            await _typeCache.AddAsync(nameOrId, jsonData);
-            _logger.LogInformation("Type '{NameOrId}' cached successfully (size={Bytes} bytes)", nameOrId, System.Text.Encoding.UTF8.GetByteCount(jsonData));
-        }
-
-        return type;
+        return GetOrFetchAsync<TypeData, CachedType>(
+            "Type", nameOrId, _typeCache,
+            _apiConnector.GetTypeAsync,
+            cached => cached.JsonData,
+            _typeCache.AddAsync);
     }
 
-    public async Task<AbilityData?> GetAbilityAsync(string nameOrId)
+    public Task<AbilityData?> GetAbilityAsync(string nameOrId)
     {
-        var cached = await _abilityCache.GetByNameOrIdAsync(nameOrId);
-        if (cached != null)
-        {
-            _logger.LogInformation("Ability '{NameOrId}' found in cache", nameOrId);
-            return JsonSerializer.Deserialize<AbilityData>(cached.JsonData);
-        }
-        _logger.LogInformation("Ability '{NameOrId}' not in cache, fetching from PokeApi", nameOrId);
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        var ability = await _apiConnector.GetAbilityAsync(nameOrId);
-        sw.Stop();
-        _logger.LogInformation("Fetched Ability '{NameOrId}' from PokeApi in {Ms}ms", nameOrId, sw.Elapsed.TotalMilliseconds);
-
-        if (ability != null)
-        {
-            var jsonData = JsonSerializer.Serialize(ability);
-            await _abilityCache.AddAsync(nameOrId, jsonData);
-            _logger.LogInformation("Ability '{NameOrId}' cached successfully (size={Bytes} bytes)", nameOrId, System.Text.Encoding.UTF8.GetByteCount(jsonData));
-        }
-
-        return ability;
+        return GetOrFetchAsync<AbilityData, CachedAbility>(
+            "Ability", nameOrId, _abilityCache,
+            _apiConnector.GetAbilityAsync,
+            cached => cached.JsonData,
+            _abilityCache.AddAsync);
     }
 
-    public async Task<ItemData?> GetItemAsync(string nameOrId)
+    public Task<ItemData?> GetItemAsync(string nameOrId)
     {
-        var cached = await _itemCache.GetByNameOrIdAsync(nameOrId);
-        if (cached != null)
+        return GetOrFetchAsync<ItemData, CachedItem>(
+            "Item", nameOrId, _itemCache,
+            _apiConnector.GetItemAsync,
+            cached => cached.JsonData,
+            _itemCache.AddAsync);
+    }
+
+    private async Task<TData?> GetOrFetchAsync<TData, TCached>(
+        string entityType,
+        string nameOrId,
+        ICacheRepository<TCached> l2Cache,
+        Func<string, Task<TData?>> apiFetch,
+        Func<TCached, string> getJsonData,
+        Func<string, string, Task> l2Store)
+        where TData : class
+        where TCached : class
+    {
+        var cacheKey = $"{entityType}:{nameOrId.ToLower()}";
+
+        // L1: Memory cache lookup
+        if (_ttl > TimeSpan.Zero && _memoryCache.TryGetValue(cacheKey, out TData? memoryCached))
         {
-            _logger.LogInformation("Item '{NameOrId}' found in cache", nameOrId);
-            return JsonSerializer.Deserialize<ItemData>(cached.JsonData);
+            _logger.LogInformation(
+                "Cache {CacheResult} on {CacheLayer} for {EntityType} '{NameOrId}'",
+                "Hit", "L1_Memory", entityType, nameOrId);
+            return memoryCached;
         }
-        _logger.LogInformation("Item '{NameOrId}' not in cache, fetching from PokeApi", nameOrId);
+
+        if (_ttl > TimeSpan.Zero)
+        {
+            _logger.LogInformation(
+                "Cache {CacheResult} on {CacheLayer} for {EntityType} '{NameOrId}'",
+                "Miss", "L1_Memory", entityType, nameOrId);
+        }
+
+        // L2: SQLite cache lookup
+        var l2Entry = await l2Cache.GetByNameOrIdAsync(nameOrId);
+        if (l2Entry != null)
+        {
+            _logger.LogInformation(
+                "Cache {CacheResult} on {CacheLayer} for {EntityType} '{NameOrId}'",
+                "Hit", "L2_SQLite", entityType, nameOrId);
+
+            var jsonData = getJsonData(l2Entry);
+            var deserialized = JsonSerializer.Deserialize<TData>(jsonData);
+
+            // Promote to L1
+            if (deserialized != null && _ttl > TimeSpan.Zero)
+            {
+                _memoryCache.Set(cacheKey, deserialized, new MemoryCacheEntryOptions()
+                    .SetAbsoluteExpiration(_ttl));
+            }
+
+            return deserialized;
+        }
+
+        _logger.LogInformation(
+            "Cache {CacheResult} on {CacheLayer} for {EntityType} '{NameOrId}'",
+            "Miss", "L2_SQLite", entityType, nameOrId);
+
+        // L3: Fetch from PokeAPI
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        var item = await _apiConnector.GetItemAsync(nameOrId);
+        var result = await apiFetch(nameOrId);
         sw.Stop();
-        _logger.LogInformation("Fetched Item '{NameOrId}' from PokeApi in {Ms}ms", nameOrId, sw.Elapsed.TotalMilliseconds);
+        _logger.LogInformation(
+            "Fetched {EntityType} '{NameOrId}' from PokeApi in {ElapsedMs}ms",
+            entityType, nameOrId, sw.Elapsed.TotalMilliseconds);
 
-        if (item != null)
+        if (result != null)
         {
-            var jsonData = JsonSerializer.Serialize(item);
-            await _itemCache.AddAsync(nameOrId, jsonData);
-            _logger.LogInformation("Item '{NameOrId}' cached successfully (size={Bytes} bytes)", nameOrId, System.Text.Encoding.UTF8.GetByteCount(jsonData));
+            var serialized = JsonSerializer.Serialize(result);
+
+            // Store in L2 (SQLite)
+            await l2Store(nameOrId, serialized);
+
+            // Store in L1 (Memory)
+            if (_ttl > TimeSpan.Zero)
+            {
+                _memoryCache.Set(cacheKey, result, new MemoryCacheEntryOptions()
+                    .SetAbsoluteExpiration(_ttl));
+            }
+
+            _logger.LogInformation(
+                "{EntityType} '{NameOrId}' cached in L1+L2 (size={Bytes} bytes)",
+                entityType, nameOrId, System.Text.Encoding.UTF8.GetByteCount(serialized));
         }
 
-        return item;
+        return result;
     }
 }

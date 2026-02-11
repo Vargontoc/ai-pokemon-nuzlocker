@@ -37,9 +37,14 @@
 
 
 - **Caching (PokeAPI)**
-  - [ ] Diseñar estrategia: `MemoryCache` con TTL configurable por ambiente.
-  - [ ] Implementar caché en `CachedPokeApiConnector` con métricas de hit/miss.
-  - [ ] Añadir tests que verifiquen TTL y comportamiento de expiración.
+  - [x] Diseñar estrategia: `MemoryCache` con TTL configurable por ambiente.
+    - L1 (IMemoryCache) con TTL configurable: dev=5min, base=60min, prod=1440min. TTL=0 desactiva L1.
+    - L2 (SQLite) persistente sin expiración. Flujo: L1 → L2 → PokeAPI.
+  - [x] Implementar caché en `CachedPokeApiConnector` con métricas de hit/miss.
+    - Helper genérico `GetOrFetchAsync<TData, TCached>` con logging estructurado (CacheResult, CacheLayer).
+    - Absolute expiration (no sliding) para datos estáticos de PokeAPI.
+  - [x] Añadir tests que verifiquen TTL y comportamiento de expiración.
+    - 7 unit tests en `CachedPokeApiConnectorMemoryCacheTests`: L1 hit, L2 hit con promoción, TTL expiración, TTL=0, full miss, null handling, cross-entity.
 
 - **Context memory**
   - [ ] Diseñar modelo: `game_state` (persistente por `nuzlockeId`) y `battle_context` (temporal durante combate).
@@ -58,11 +63,6 @@
 - **LLM: streaming / retries**
   - [ ] Investigar soporte de streaming y retries en el proveedor actual (Ollama/OpenAI).
   - [ ] Implementar retry/backoff o streaming según viabilidad; añadir tests de integración.
-
-- **Prioridad inicial (primeros 3 días)**
-  - [ ] Definir subset de `Response optimization` (campo y formato).  <-- empezar aquí
-  - [ ] Diseñar TTL por defecto para `Caching` (pregunta abierta).
-  - [ ] Prototipar `game_state` minimal para `Context memory`.
 
 
 
