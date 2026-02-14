@@ -122,7 +122,7 @@ public class ToolExecutor
                 : args.Moves.Split(',').Select(m => m.Trim()).ToList()
         };
 
-        var success = string.IsNullOrEmpty(args?.SessionId)
+        var success = string.IsNullOrEmpty(args.SessionId)
             ? await _stateManager.AddToTeamAsync(member)
             : await _stateManager.AddToTeamAsync(args.SessionId, member);
 
@@ -149,7 +149,7 @@ public class ToolExecutor
             throw new InvalidOperationException("Invalid arguments for mark_as_dead");
         }
 
-        var success = string.IsNullOrEmpty(args?.SessionId)
+        var success = string.IsNullOrEmpty(args.SessionId)
             ? await _stateManager.MarkAsDeadAsync(
                 args.Nickname,
                 args.DeathLocation,
@@ -183,9 +183,9 @@ public class ToolExecutor
             throw new InvalidOperationException("Invalid arguments for move_to_pc");
         }
 
-        if (string.IsNullOrEmpty(args?.SessionId))
+        if (string.IsNullOrEmpty(args.SessionId))
         {
-            await _stateManager.MoveToPCAsync(args!.Nickname);
+            await _stateManager.MoveToPCAsync(args.Nickname);
         }
         else
         {
@@ -213,7 +213,7 @@ public class ToolExecutor
             throw new InvalidOperationException("Invalid arguments for record_encounter");
         }
 
-        var success = string.IsNullOrEmpty(args?.SessionId)
+        var success = string.IsNullOrEmpty(args.SessionId)
             ? await _stateManager.RecordEncounterAsync(
                 args.Location,
                 args.CapturedSpecies,

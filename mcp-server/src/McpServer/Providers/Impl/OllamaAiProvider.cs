@@ -34,6 +34,27 @@ public class OllamaAiProvider : IAiProvider
         _httpClient.Timeout = TimeSpan.FromMinutes(10); // 10 minutes
     }
 
+    // Lightweight retry helper with exponential backoff + jitter
+    private async Task<T> ExecuteWithRetriesAsync<T>(Func<Task<T>> action, int maxRetries = 3)
+    {
+        var rnd = new Random();
+        var attempt = 0;
+        while (true)
+        {
+            try
+            {
+                return await action();
+            }
+            catch (HttpRequestException) when (attempt < maxRetries)
+            {
+                attempt++;
+                var delayMs = (int)(Math.Pow(2, attempt) * 100) + rnd.Next(0, 100);
+                _logger.LogWarning("Transient HTTP error; retrying attempt {Attempt} after {Delay}ms", attempt, delayMs);
+                await Task.Delay(delayMs);
+            }
+        }
+    }
+
     public async Task<string> GetCompletionAsync(
         string systemPrompt,
         string userMessage,
@@ -63,7 +84,7 @@ public class OllamaAiProvider : IAiProvider
 
             _logger.LogDebug("Sending request to Ollama: {BaseUrl}/api/generate", _options.BaseUrl);
 
-            var response = await _httpClient.PostAsync("/api/generate", content, cancellationToken);
+            var response = await ExecuteWithRetriesAsync(async () => await _httpClient.PostAsync("/api/generate", content, cancellationToken));
             response.EnsureSuccessStatusCode();
 
             var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -167,13 +188,12 @@ public class OllamaAiProvider : IAiProvider
                 string.Join(',', ollamaTools.Select(t => ((dynamic)t).function.name)),
                 requestJson.Length / 1024.0);
 
-            var response = await _httpClient.PostAsync("/api/chat", content, cancellationToken);
+            var response = await ExecuteWithRetriesAsync(async () => await _httpClient.PostAsync("/api/chat", content, cancellationToken));
 
             if (!response.IsSuccessStatusCode)
             {
                 var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogError("Ollama returned {StatusCode}: {Error}",
-                    response.StatusCode, errorBody);
+                _logger.LogError("Ollama returned {StatusCode}: {Error}", response.StatusCode, errorBody);
             }
 
             response.EnsureSuccessStatusCode();
@@ -269,5 +289,157 @@ public class OllamaAiProvider : IAiProvider
     {
         public string Name { get; set; } = string.Empty;
         public Dictionary<string, object>? Arguments { get; set; }
+    }
+
+
+
+    // Single-attempt streaming implementation for Ollama
+    private async IAsyncEnumerable<string> StreamOnceAsync(
+        string systemPrompt,
+        string userMessage,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var combinedPrompt = $"{systemPrompt}\n\nUser: {userMessage}\n\nAssistant:";
+
+        var request = new
+        {
+            model = _options.Model,
+            prompt = combinedPrompt,
+            stream = true,
+            options = new
+            {
+                temperature = _options.Temperature,
+                num_predict = _options.MaxTokens
+            }
+        };
+
+        var content = new StringContent(JsonSerializer.Serialize(request, _jsonOptions), Encoding.UTF8, "application/json");
+
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/generate") { Content = content };
+        using var response = await _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+
+        var buffer = new char[4096];
+        var functionCallBuffer = new StringBuilder();
+        var inFunctionCall = false;
+
+        while (!reader.EndOfStream && !cancellationToken.IsCancellationRequested)
+        {
+            var read = await reader.ReadAsync(buffer, 0, buffer.Length);
+            if (read <= 0) break;
+            var chunk = new string(buffer, 0, read);
+
+            // Attempt to find a JSON object inside the chunk
+            var firstBrace = chunk.IndexOf('{');
+            if (firstBrace >= 0)
+            {
+                var jsonPart = chunk.Substring(firstBrace);
+                var doc = JsonDocument.Parse(jsonPart);
+                if (doc.RootElement.TryGetProperty("response", out var resp) && resp.ValueKind == JsonValueKind.String)
+                {
+                    if (inFunctionCall)
+                    {
+                        functionCallBuffer.Append(resp.GetString());
+                    }
+                    else
+                    {
+                        yield return resp.GetString() ?? string.Empty;
+                        continue;
+                    }
+                }
+                if (doc.RootElement.TryGetProperty("content", out var contentEl) && contentEl.ValueKind == JsonValueKind.String)
+                {
+                    if (inFunctionCall)
+                    {
+                        functionCallBuffer.Append(contentEl.GetString());
+                    }
+                    else
+                    {
+                        yield return contentEl.GetString() ?? string.Empty;
+                        continue;
+                    }
+                }
+            }
+
+            // If we had been accumulating a function call and this chunk doesn't contain JSON, append
+            if (inFunctionCall)
+            {
+                functionCallBuffer.Append(chunk);
+            }
+            else
+            {
+                yield return chunk;
+            }
+        }
+    }
+
+    public IAsyncEnumerable<string> StreamCompletionAsync(
+        string systemPrompt,
+        string userMessage,
+        CancellationToken cancellationToken = default)
+    {
+        return StreamWithRetriesAsync(systemPrompt, userMessage, StreamOnceAsync, cancellationToken);
+    }
+
+    private IAsyncEnumerable<string> StreamWithRetriesAsync(
+        string systemPrompt,
+        string userMessage,
+        Func<string, string, CancellationToken, IAsyncEnumerable<string>> streamFunc,
+        CancellationToken cancellationToken = default)
+    {
+        var channel = System.Threading.Channels.Channel.CreateUnbounded<string>();
+
+        _ = Task.Run(async () =>
+        {
+            var maxAttempts = 3;
+            var attempt = 0;
+            var rnd = new Random();
+            Exception? lastEx = null;
+
+            while (attempt < maxAttempts && !cancellationToken.IsCancellationRequested)
+            {
+                attempt++;
+                try
+                {
+                    await foreach (var part in streamFunc(systemPrompt, userMessage, cancellationToken))
+                    {
+                        await channel.Writer.WriteAsync(part, cancellationToken);
+                    }
+                    channel.Writer.Complete();
+                    return;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    channel.Writer.TryComplete(new OperationCanceledException());
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    lastEx = ex;
+                    _logger.LogWarning(ex, "Streaming attempt {Attempt} failed", attempt);
+                    if (attempt >= maxAttempts)
+                    {
+                        channel.Writer.TryComplete(ex);
+                        return;
+                    }
+                    var delayMs = (int)(Math.Pow(2, attempt) * 100) + rnd.Next(0, 200);
+                    await Task.Delay(delayMs, cancellationToken);
+                }
+            }
+
+            if (lastEx != null)
+            {
+                channel.Writer.TryComplete(lastEx);
+            }
+            else
+            {
+                channel.Writer.TryComplete();
+            }
+        }, cancellationToken);
+
+        return channel.Reader.ReadAllAsync(cancellationToken);
     }
 }

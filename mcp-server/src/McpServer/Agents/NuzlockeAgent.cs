@@ -254,6 +254,39 @@ Provide strategic advice based on the current state and the user's question.";
         }
     }
 
+    /// <summary>
+    /// Stream strategic advice from the underlying AI provider as it is generated.
+    /// This method streams the provider's text output (no function-calling support in-stream).
+    /// </summary>
+    public IAsyncEnumerable<string> StreamAdviceAsync(string userQuestion, CancellationToken cancellationToken = default, string? sessionId = null)
+    {
+        // Build prompt similarly to GetAdviceAsync but keep logic synchronous for streaming
+        var stateTask = string.IsNullOrEmpty(sessionId)
+            ? _stateManager.GetStateAsync()
+            : _stateManager.GetStateAsync(sessionId);
+
+        // We'll start an async iterator that awaits the state then streams
+        return StreamAdviceInternalAsync(stateTask, userQuestion, cancellationToken);
+    }
+
+    private async IAsyncEnumerable<string> StreamAdviceInternalAsync(Task<Models.NuzlockeState> stateTask, string userQuestion, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var state = await stateTask;
+        var stateContext = BuildStateContext(state);
+
+        var fullMessage = $@"CURRENT GAME STATE:
+{stateContext}
+
+USER QUESTION: {userQuestion}
+
+You have access to tools when appropriate. Provide strategic advice based on the current state and the user's question.";
+
+        await foreach (var chunk in _aiProvider.StreamCompletionAsync(SystemPrompt, fullMessage, cancellationToken))
+        {
+            yield return chunk;
+        }
+    }
+
     private string BuildStateContext(Models.NuzlockeState state)
     {
         var context = new System.Text.StringBuilder();

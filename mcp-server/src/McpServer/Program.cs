@@ -54,11 +54,11 @@ builder.Services.AddScoped<IPokeApiConnector>(sp =>
         sp.GetRequiredService<ILogger<CachedPokeApiConnector>>(),
         sp.GetRequiredService<IOptions<PokeApiOptions>>()));
 
+// Register Nuzlocke session manager (before StateManager, which depends on it)
+builder.Services.AddSingleton<INuzlockeSessionManager, NuzlockeSessionManager>();
+
 // Register Nuzlocke state manager
 builder.Services.AddSingleton<IStateManager, StateManager>();
-
-// Register Nuzlocke session manager
-builder.Services.AddSingleton<INuzlockeSessionManager, NuzlockeSessionManager>();
 
 // Register ToolExecutor
 builder.Services.AddScoped<ToolExecutor>();
@@ -272,6 +272,41 @@ app.MapPost("/nuzlocke/advice", async (AdviceRequest request, NuzlockeAgent agen
     catch (Exception ex)
     {
         logger.LogError(ex, "Error handling /nuzlocke/advice for question: {Question}", request.Question);
+        return Results.Problem(detail: ex.Message, statusCode: 500);
+    }
+});
+
+// Streaming endpoint for nuzlocke advice (SSE)
+app.MapPost("/nuzlocke/advice/stream", async (AdviceRequest request, NuzlockeAgent agent, HttpContext ctx, CancellationToken ct) =>
+{
+    var logger = app.Services.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation("POST /nuzlocke/advice/stream received: {Question}, session={SessionId}", request.Question, request.SessionId);
+
+    ctx.Response.Headers["Cache-Control"] = "no-cache";
+    ctx.Response.ContentType = "text/event-stream";
+
+    try
+    {
+        await foreach (var chunk in agent.StreamAdviceAsync(request.Question, ct, request.SessionId))
+        {
+            if (ct.IsCancellationRequested) break;
+            // Write SSE data field
+            await ctx.Response.WriteAsync($"data: {chunk.Replace("\n", "\\n")}\n\n");
+            await ctx.Response.Body.FlushAsync(ct);
+        }
+
+        // Close the stream
+        await ctx.Response.WriteAsync("event: end\ndata: [DONE]\n\n");
+        await ctx.Response.Body.FlushAsync(ct);
+        return Results.Ok();
+    }
+    catch (OperationCanceledException)
+    {
+        return Results.Problem(detail: "Client cancelled stream", statusCode: 499);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error while streaming advice");
         return Results.Problem(detail: ex.Message, statusCode: 500);
     }
 });

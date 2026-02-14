@@ -202,4 +202,13 @@ public class ClaudeAiProvider : IAiProvider
             throw;
         }
     }
+
+    public async IAsyncEnumerable<string> StreamCompletionAsync(
+        string systemPrompt,
+        string userMessage,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var text = await GetCompletionAsync(systemPrompt, userMessage, cancellationToken);
+        yield return text;
+    }
 }

@@ -7,12 +7,20 @@ namespace es.vargontoc.nuzlocke.ai.Services;
 public class NuzlockeSessionManager : INuzlockeSessionManager
 {
     private readonly string _registryPath;
-    private readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
+    private readonly ILogger<NuzlockeSessionManager> _logger;
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
-    private readonly object _registryLock = new();
+    private readonly SemaphoreSlim _registryLock = new(1, 1);
 
-    public NuzlockeSessionManager(IConfiguration configuration)
+    private static readonly JsonSerializerOptions _readOptions = new() { PropertyNameCaseInsensitive = true };
+    private static readonly JsonSerializerOptions _writeOptions = new()
     {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
+    public NuzlockeSessionManager(IConfiguration configuration, ILogger<NuzlockeSessionManager> logger)
+    {
+        _logger = logger;
         _registryPath = configuration["NuzlockeRegistryPath"] ?? Path.Combine(AppContext.BaseDirectory, "nuzlocke_registry.json");
         EnsureRegistryExists();
     }
@@ -24,92 +32,125 @@ public class NuzlockeSessionManager : INuzlockeSessionManager
         if (!File.Exists(_registryPath)) File.WriteAllText(_registryPath, JsonSerializer.Serialize(new NuzlockeRegistry()));
     }
 
-    private NuzlockeRegistry ReadRegistry()
+    private async Task<NuzlockeRegistry> ReadRegistryAsync()
     {
-        lock (_registryLock)
-        {
-            var txt = File.ReadAllText(_registryPath);
-            return JsonSerializer.Deserialize<NuzlockeRegistry>(txt, _jsonOptions) ?? new NuzlockeRegistry();
-        }
+        var txt = await File.ReadAllTextAsync(_registryPath);
+        return JsonSerializer.Deserialize<NuzlockeRegistry>(txt, _readOptions) ?? new NuzlockeRegistry();
     }
 
-    private void WriteRegistry(NuzlockeRegistry reg)
+    private async Task WriteRegistryAsync(NuzlockeRegistry reg)
     {
-        lock (_registryLock)
-        {
-            File.WriteAllText(_registryPath, JsonSerializer.Serialize(reg, new JsonSerializerOptions { WriteIndented = true }));
-        }
+        await File.WriteAllTextAsync(_registryPath, JsonSerializer.Serialize(reg, _writeOptions));
     }
 
     public async Task<NuzlockeSessionInfo> CreateSessionAsync(string name, string directoryPath)
     {
-        if (!Directory.Exists(directoryPath)) throw new DirectoryNotFoundException(directoryPath);
+        if (!Directory.Exists(directoryPath))
+            throw new DirectoryNotFoundException($"Directory not found: {directoryPath}");
 
-        var info = new NuzlockeSessionInfo { Name = name, Path = directoryPath };
-        var reg = ReadRegistry();
-        reg.Sessions.Add(info);
-        WriteRegistry(reg);
+        await _registryLock.WaitAsync();
+        try
+        {
+            var info = new NuzlockeSessionInfo { Name = name, Path = directoryPath };
+            var reg = await ReadRegistryAsync();
+            reg.Sessions.Add(info);
+            await WriteRegistryAsync(reg);
 
-        var filePath = Path.Combine(directoryPath, ".nuzlocke");
-        var data = new NuzlockeFileData { SessionId = info.Id };
-        var txt = JsonSerializer.Serialize(data, _jsonOptions);
-        File.WriteAllText(filePath, txt);
+            var filePath = Path.Combine(directoryPath, ".nuzlocke");
+            var data = new NuzlockeFileData { SessionId = info.Id };
+            await File.WriteAllTextAsync(filePath, JsonSerializer.Serialize(data, _writeOptions));
 
-        return info;
+            _logger.LogInformation("Created session {SessionId} at {Path}", info.Id, directoryPath);
+            return info;
+        }
+        finally
+        {
+            _registryLock.Release();
+        }
     }
 
-    public Task<NuzlockeSessionInfo?> GetSessionAsync(string sessionId)
+    public async Task<NuzlockeSessionInfo?> GetSessionAsync(string sessionId)
     {
-        var reg = ReadRegistry();
-        var s = reg.Sessions.FirstOrDefault(x => x.Id == sessionId);
-        return Task.FromResult(s);
+        await _registryLock.WaitAsync();
+        try
+        {
+            var reg = await ReadRegistryAsync();
+            return reg.Sessions.FirstOrDefault(x => x.Id == sessionId);
+        }
+        finally
+        {
+            _registryLock.Release();
+        }
     }
 
-    public Task<List<NuzlockeSessionInfo>> ListSessionsAsync()
+    public async Task<List<NuzlockeSessionInfo>> ListSessionsAsync()
     {
-        var reg = ReadRegistry();
-        return Task.FromResult(reg.Sessions);
+        await _registryLock.WaitAsync();
+        try
+        {
+            var reg = await ReadRegistryAsync();
+            return reg.Sessions;
+        }
+        finally
+        {
+            _registryLock.Release();
+        }
     }
 
-    public Task<bool> DeleteSessionAsync(string sessionId)
+    public async Task<bool> DeleteSessionAsync(string sessionId)
     {
-        var reg = ReadRegistry();
-        var s = reg.Sessions.FirstOrDefault(x => x.Id == sessionId);
-        if (s == null) return Task.FromResult(false);
-        var filePath = Path.Combine(s.Path, ".nuzlocke");
-        if (File.Exists(filePath)) File.Delete(filePath);
-        reg.Sessions.Remove(s);
-        WriteRegistry(reg);
-        return Task.FromResult(true);
+        await _registryLock.WaitAsync();
+        try
+        {
+            var reg = await ReadRegistryAsync();
+            var s = reg.Sessions.FirstOrDefault(x => x.Id == sessionId);
+            if (s == null) return false;
+
+            var filePath = Path.Combine(s.Path, ".nuzlocke");
+            if (File.Exists(filePath)) File.Delete(filePath);
+
+            reg.Sessions.Remove(s);
+            await WriteRegistryAsync(reg);
+
+            _logger.LogInformation("Deleted session {SessionId}", sessionId);
+            return true;
+        }
+        finally
+        {
+            _registryLock.Release();
+        }
     }
 
     private SemaphoreSlim GetLock(string sessionId) => _locks.GetOrAdd(sessionId, _ => new SemaphoreSlim(1,1));
 
     public async Task<NuzlockeFileData> LoadSessionDataAsync(string sessionId)
     {
-        var s = (await GetSessionAsync(sessionId));
-        if (s == null) throw new KeyNotFoundException(sessionId);
+        var s = await GetSessionAsync(sessionId);
+        if (s == null) throw new KeyNotFoundException($"Session not found: {sessionId}");
+
         var filePath = Path.Combine(s.Path, ".nuzlocke");
         var sem = GetLock(sessionId);
         await sem.WaitAsync();
         try
         {
-            var txt = File.ReadAllText(filePath);
-            return JsonSerializer.Deserialize<NuzlockeFileData>(txt, _jsonOptions) ?? new NuzlockeFileData { SessionId = sessionId };
+            var txt = await File.ReadAllTextAsync(filePath);
+            return JsonSerializer.Deserialize<NuzlockeFileData>(txt, _readOptions)
+                ?? new NuzlockeFileData { SessionId = sessionId };
         }
         finally { sem.Release(); }
     }
 
     public async Task SaveSessionDataAsync(string sessionId, NuzlockeFileData data)
     {
-        var s = (await GetSessionAsync(sessionId));
-        if (s == null) throw new KeyNotFoundException(sessionId);
+        var s = await GetSessionAsync(sessionId);
+        if (s == null) throw new KeyNotFoundException($"Session not found: {sessionId}");
+
         var filePath = Path.Combine(s.Path, ".nuzlocke");
         var sem = GetLock(sessionId);
         await sem.WaitAsync();
         try
         {
-            File.WriteAllText(filePath, JsonSerializer.Serialize(data, new JsonSerializerOptions { WriteIndented = true }));
+            await File.WriteAllTextAsync(filePath, JsonSerializer.Serialize(data, _writeOptions));
         }
         finally { sem.Release(); }
     }

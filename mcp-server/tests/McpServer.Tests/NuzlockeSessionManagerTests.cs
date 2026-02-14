@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 using es.vargontoc.nuzlocke.ai.Services;
 using es.vargontoc.nuzlocke.ai.Models;
@@ -27,7 +28,7 @@ namespace es.vargontoc.nuzlocke.ai.Tests
                 })
                 .Build();
 
-            _manager = new NuzlockeSessionManager(config);
+            _manager = new NuzlockeSessionManager(config, NullLogger<NuzlockeSessionManager>.Instance);
         }
 
         [Fact]

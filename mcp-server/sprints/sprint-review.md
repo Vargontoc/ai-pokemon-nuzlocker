@@ -74,7 +74,12 @@
     - `NuzlockeSessionManager` implementado con bloqueo por sesión — COMPLETADO.
     - Tests unitarios para el manager — COMPLETADO (ver `NuzlockeSessionManagerTests`).
     - Integración con `StateManager` y tools/agent/plugin para propagar `sessionId` — COMPLETADO.
-    - Tests del proyecto: todos los tests pasan en local (68 tests, 0 fallos).
+    - Tests del proyecto: todos los tests pasan en local (49 tests, 0 fallos).
+    - Review y fixes aplicados: serialización consistente (camelCase + WriteIndented), race condition en registro, async I/O completo, null-dereference warnings resueltos.
+
+- **LLM: streaming / retries**
+  - [ ] Investigar soporte de streaming y retries en el proveedor actual (Ollama/OpenAI).
+  - [ ] Implementar retry/backoff o streaming según viabilidad; añadir tests de integración.
 
 - **Context memory**
   - [ ] Diseñar modelo: `game_state` (persistente por `nuzlockeId`) y `battle_context` (temporal durante combate).
@@ -87,9 +92,7 @@
   - [ ] Test: ciclo con 1-2 llamadas a herramientas y consolidación de resultados.
   - [ ] Test: manejo de errores (time-outs y herramientas que devuelven JSON inválido).
 
-- **LLM: streaming / retries**
-  - [ ] Investigar soporte de streaming y retries en el proveedor actual (Ollama/OpenAI).
-  - [ ] Implementar retry/backoff o streaming según viabilidad; añadir tests de integración.
+
 
 
 

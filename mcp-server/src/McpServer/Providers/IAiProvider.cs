@@ -34,4 +34,12 @@ public interface IAiProvider
         IEnumerable<ToolDefinition> tools,
         List<ToolCallResult>? toolResults = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Stream completion chunks from the AI provider as they arrive.
+    /// </summary>
+    IAsyncEnumerable<string> StreamCompletionAsync(
+        string systemPrompt,
+        string userMessage,
+        CancellationToken cancellationToken = default);
 }
