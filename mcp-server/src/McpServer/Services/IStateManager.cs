@@ -49,4 +49,18 @@ public interface IStateManager
     Task<bool> RecordEncounterAsync(string location, string? capturedSpecies = null, string? capturedNickname = null);
 
     Task<bool> RecordEncounterAsync(string sessionId, string location, string? capturedSpecies = null, string? capturedNickname = null);
+
+    // --- Battle Context ---
+
+    Task<BattleContext> GetBattleContextAsync();
+    Task<BattleContext> GetBattleContextAsync(string sessionId);
+
+    Task<BattleContext> StartBattleAsync(string opponentName, string? activePokemonNickname = null, string? battleType = null);
+    Task<BattleContext> StartBattleAsync(string sessionId, string opponentName, string? activePokemonNickname = null, string? battleType = null);
+
+    Task<bool> AddBattleLogAsync(string logEntry);
+    Task<bool> AddBattleLogAsync(string sessionId, string logEntry);
+
+    Task<bool> EndBattleAsync();
+    Task<bool> EndBattleAsync(string sessionId);
 }

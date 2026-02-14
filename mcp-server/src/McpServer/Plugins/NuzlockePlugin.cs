@@ -222,4 +222,46 @@ public class NuzlockePlugin
 
         return JsonSerializer.Serialize(new { success = true, message });
     }
+
+    [KernelFunction("start_battle")]
+    [Description("Start a new battle, clearing any previous battle context")]
+    [return: Description("JSON with the new battle context")]
+    public async Task<string> StartBattleAsync(
+        string? sessionId,
+        [Description("Name of the opponent")] string opponentName,
+        [Description("Nickname of the leading Pokemon (optional)")] string? activePokemonNickname = null,
+        [Description("Battle type: wild, trainer, gym_leader, rival, elite_four (optional)")] string? battleType = null)
+    {
+        var bc = string.IsNullOrEmpty(sessionId)
+            ? await _stateManager.StartBattleAsync(opponentName, activePokemonNickname, battleType)
+            : await _stateManager.StartBattleAsync(sessionId, opponentName, activePokemonNickname, battleType);
+
+        return JsonSerializer.Serialize(new { success = true, message = $"Battle started against {opponentName}", battleContext = bc });
+    }
+
+    [KernelFunction("add_battle_log")]
+    [Description("Add a log entry to the current battle")]
+    [return: Description("Success or failure message")]
+    public async Task<string> AddBattleLogAsync(
+        string? sessionId,
+        [Description("Description of the battle event")] string logEntry)
+    {
+        var success = string.IsNullOrEmpty(sessionId)
+            ? await _stateManager.AddBattleLogAsync(logEntry)
+            : await _stateManager.AddBattleLogAsync(sessionId, logEntry);
+
+        return JsonSerializer.Serialize(new { success, message = success ? "Log entry added" : "No active battle" });
+    }
+
+    [KernelFunction("end_battle")]
+    [Description("End the current battle and clear battle context")]
+    [return: Description("Success or failure message")]
+    public async Task<string> EndBattleAsync(string? sessionId = null)
+    {
+        var success = string.IsNullOrEmpty(sessionId)
+            ? await _stateManager.EndBattleAsync()
+            : await _stateManager.EndBattleAsync(sessionId);
+
+        return JsonSerializer.Serialize(new { success, message = success ? "Battle ended" : "No active battle to end" });
+    }
 }

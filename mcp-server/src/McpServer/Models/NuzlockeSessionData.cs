@@ -25,6 +25,8 @@ public class BattleContext
     public string? ActivePokemonNickname { get; set; }
     public int TurnCount { get; set; }
     public List<string> BattleLog { get; set; } = new();
+    public DateTime? BattleStartedAt { get; set; }
+    public string? BattleType { get; set; }
 }
 
 public class AgentMemory

@@ -36,6 +36,12 @@ Your role is to:
 - Warn about dangerous situations that could lead to Pokemon deaths
 - Help with team building and Pokemon selection from PC
 
+BATTLE CONTEXT:
+- When a user says they're entering a battle, use the start_battle tool to begin tracking
+- During battle, use add_battle_log to record important events the user reports
+- When the battle ends, use end_battle to clear the context
+- If a battle is active, prioritize tactical advice (type matchups, move selection, when to switch)
+
 You have access a external agent tool (get_info)
 - This agent give you information that you needs complete.
 
@@ -101,13 +107,20 @@ Be concise but insightful. Prioritize survival and strategic planning. Remember 
             // Build context from game state
             var stateContext = BuildStateContext(state);
 
+            // Load battle context
+            var battleContext = string.IsNullOrEmpty(sessionId)
+                ? await _stateManager.GetBattleContextAsync()
+                : await _stateManager.GetBattleContextAsync(sessionId);
+            var battleContextString = BuildBattleContextString(battleContext);
+
             // Combine state context with user question
             var fullMessage = $@"CURRENT GAME STATE:
 {stateContext}
+{battleContextString}
 
 USER QUESTION: {userQuestion}
 
-You have access to tools to interact with the game state if needed. Use them when appropriate.
+You have access to tools to interact with the game state and battle context if needed. Use them when appropriate.
 Provide strategic advice based on the current state and the user's question.";
 
             // If we have a PokeApiAgent available and the question references Pokemon data,
@@ -266,16 +279,22 @@ Provide strategic advice based on the current state and the user's question.";
             : _stateManager.GetStateAsync(sessionId);
 
         // We'll start an async iterator that awaits the state then streams
-        return StreamAdviceInternalAsync(stateTask, userQuestion, cancellationToken);
+        return StreamAdviceInternalAsync(stateTask, userQuestion, sessionId, cancellationToken);
     }
 
-    private async IAsyncEnumerable<string> StreamAdviceInternalAsync(Task<Models.NuzlockeState> stateTask, string userQuestion, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    private async IAsyncEnumerable<string> StreamAdviceInternalAsync(Task<Models.NuzlockeState> stateTask, string userQuestion, string? sessionId, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var state = await stateTask;
         var stateContext = BuildStateContext(state);
 
+        var battleContext = string.IsNullOrEmpty(sessionId)
+            ? await _stateManager.GetBattleContextAsync()
+            : await _stateManager.GetBattleContextAsync(sessionId);
+        var battleContextString = BuildBattleContextString(battleContext);
+
         var fullMessage = $@"CURRENT GAME STATE:
 {stateContext}
+{battleContextString}
 
 USER QUESTION: {userQuestion}
 
@@ -357,5 +376,29 @@ You have access to tools when appropriate. Provide strategic advice based on the
         }
 
         return context.ToString();
+    }
+
+    private string BuildBattleContextString(Models.BattleContext battleContext)
+    {
+        if (!battleContext.InBattle)
+            return "\nBATTLE STATUS: Not in battle";
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("\nACTIVE BATTLE:");
+        sb.AppendLine($"  Opponent: {battleContext.OpponentName}");
+        if (!string.IsNullOrEmpty(battleContext.BattleType))
+            sb.AppendLine($"  Battle Type: {battleContext.BattleType}");
+        if (!string.IsNullOrEmpty(battleContext.ActivePokemonNickname))
+            sb.AppendLine($"  Leading with: {battleContext.ActivePokemonNickname}");
+        sb.AppendLine($"  Turn: {battleContext.TurnCount}");
+
+        if (battleContext.BattleLog.Count > 0)
+        {
+            sb.AppendLine("  Battle Log:");
+            foreach (var entry in battleContext.BattleLog)
+                sb.AppendLine($"    {entry}");
+        }
+
+        return sb.ToString();
     }
 }

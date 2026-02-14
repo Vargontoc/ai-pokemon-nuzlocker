@@ -498,4 +498,75 @@ public class ToolExecutorTests
         Assert.Contains("error", result.Content);
         Assert.Contains("unknown", result.Content);
     }
+
+    // ========== BATTLE CONTEXT TOOL TESTS ==========
+
+    [Fact]
+    public async Task ExecuteAsync_StartBattle_CallsStateManager()
+    {
+        // Arrange
+        var expectedBc = new BattleContext { InBattle = true, OpponentName = "Brock" };
+        _mockStateManager.Setup(m => m.StartBattleAsync("Brock", null, null))
+            .ReturnsAsync(expectedBc);
+
+        var toolCall = new ToolCall
+        {
+            Id = "call_battle_1",
+            Name = "start_battle",
+            ArgumentsJson = JsonSerializer.Serialize(new { opponentName = "Brock" },
+                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })
+        };
+
+        // Act
+        var result = await _executor.ExecuteAsync(toolCall);
+
+        // Assert
+        Assert.Contains("success", result.Content);
+        Assert.Contains("Brock", result.Content);
+        _mockStateManager.Verify(m => m.StartBattleAsync("Brock", null, null), Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_AddBattleLog_CallsStateManager()
+    {
+        // Arrange
+        _mockStateManager.Setup(m => m.AddBattleLogAsync("Pikachu used Thunderbolt"))
+            .ReturnsAsync(true);
+
+        var toolCall = new ToolCall
+        {
+            Id = "call_blog_1",
+            Name = "add_battle_log",
+            ArgumentsJson = JsonSerializer.Serialize(new { logEntry = "Pikachu used Thunderbolt" },
+                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })
+        };
+
+        // Act
+        var result = await _executor.ExecuteAsync(toolCall);
+
+        // Assert
+        Assert.Contains("success", result.Content);
+        _mockStateManager.Verify(m => m.AddBattleLogAsync("Pikachu used Thunderbolt"), Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_EndBattle_CallsStateManager()
+    {
+        // Arrange
+        _mockStateManager.Setup(m => m.EndBattleAsync()).ReturnsAsync(true);
+
+        var toolCall = new ToolCall
+        {
+            Id = "call_endbattle_1",
+            Name = "end_battle",
+            ArgumentsJson = "{}"
+        };
+
+        // Act
+        var result = await _executor.ExecuteAsync(toolCall);
+
+        // Assert
+        Assert.Contains("success", result.Content);
+        _mockStateManager.Verify(m => m.EndBattleAsync(), Times.Once);
+    }
 }

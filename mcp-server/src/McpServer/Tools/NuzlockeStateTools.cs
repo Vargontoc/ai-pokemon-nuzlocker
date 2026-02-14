@@ -231,4 +231,81 @@ public static class NuzlockeStateTools
             return JsonSerializer.Serialize(new { success = false, error = ex.Message }, _jsonOptions);
         }
     }
+
+    [McpServerTool]
+    [Description("Start a new battle. Clears any previous battle context and creates a fresh one. Call this when the user enters combat.")]
+    public static async Task<string> StartBattle(
+        IStateManager stateManager,
+        string? sessionId,
+        [Description("Name of the opponent (e.g., 'Gym Leader Brock', 'Wild Geodude')")] string opponentName,
+        [Description("Nickname of the leading Pokemon (optional)")] string? activePokemonNickname = null,
+        [Description("Battle type: 'wild', 'trainer', 'gym_leader', 'rival', 'elite_four' (optional)")] string? battleType = null)
+    {
+        try
+        {
+            var battleContext = string.IsNullOrEmpty(sessionId)
+                ? await stateManager.StartBattleAsync(opponentName, activePokemonNickname, battleType)
+                : await stateManager.StartBattleAsync(sessionId, opponentName, activePokemonNickname, battleType);
+
+            return JsonSerializer.Serialize(new
+            {
+                success = true,
+                message = $"Battle started against {opponentName}",
+                battleContext
+            }, _jsonOptions);
+        }
+        catch (Exception ex)
+        {
+            return JsonSerializer.Serialize(new { success = false, error = ex.Message }, _jsonOptions);
+        }
+    }
+
+    [McpServerTool]
+    [Description("Add a log entry to the current battle. Records important battle events.")]
+    public static async Task<string> AddBattleLog(
+        IStateManager stateManager,
+        string? sessionId,
+        [Description("Description of the battle event")] string logEntry)
+    {
+        try
+        {
+            var success = string.IsNullOrEmpty(sessionId)
+                ? await stateManager.AddBattleLogAsync(logEntry)
+                : await stateManager.AddBattleLogAsync(sessionId, logEntry);
+
+            return JsonSerializer.Serialize(new
+            {
+                success,
+                message = success ? "Battle log entry added" : "No active battle to log to"
+            }, _jsonOptions);
+        }
+        catch (Exception ex)
+        {
+            return JsonSerializer.Serialize(new { success = false, error = ex.Message }, _jsonOptions);
+        }
+    }
+
+    [McpServerTool]
+    [Description("End the current battle and clear the battle context.")]
+    public static async Task<string> EndBattle(
+        IStateManager stateManager,
+        string? sessionId = null)
+    {
+        try
+        {
+            var success = string.IsNullOrEmpty(sessionId)
+                ? await stateManager.EndBattleAsync()
+                : await stateManager.EndBattleAsync(sessionId);
+
+            return JsonSerializer.Serialize(new
+            {
+                success,
+                message = success ? "Battle ended" : "No active battle to end"
+            }, _jsonOptions);
+        }
+        catch (Exception ex)
+        {
+            return JsonSerializer.Serialize(new { success = false, error = ex.Message }, _jsonOptions);
+        }
+    }
 }

@@ -244,4 +244,124 @@ public class StateManager : IStateManager
             location, capturedSpecies ?? "none");
         return true;
     }
+
+    // ========== BATTLE CONTEXT METHODS ==========
+
+    private string BattleContextFilePath => Path.ChangeExtension(_stateFilePath, ".battle.json");
+
+    public Task<BattleContext> GetBattleContextAsync() => GetBattleContextAsync("default");
+
+    public async Task<BattleContext> GetBattleContextAsync(string sessionId)
+    {
+        if (_sessionManager == null || sessionId == "default")
+        {
+            await _fileLock.WaitAsync();
+            try
+            {
+                if (!File.Exists(BattleContextFilePath))
+                    return new BattleContext();
+
+                var json = await File.ReadAllTextAsync(BattleContextFilePath);
+                return JsonSerializer.Deserialize<BattleContext>(json, _jsonOptions) ?? new BattleContext();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error reading battle context file");
+                return new BattleContext();
+            }
+            finally { _fileLock.Release(); }
+        }
+
+        try
+        {
+            var fileData = await _sessionManager.LoadSessionDataAsync(sessionId);
+            return fileData.BattleContext ?? new BattleContext();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error loading battle context for {SessionId}", sessionId);
+            return new BattleContext();
+        }
+    }
+
+    public Task<BattleContext> StartBattleAsync(string opponentName, string? activePokemonNickname = null, string? battleType = null)
+        => StartBattleAsync("default", opponentName, activePokemonNickname, battleType);
+
+    public async Task<BattleContext> StartBattleAsync(string sessionId, string opponentName, string? activePokemonNickname = null, string? battleType = null)
+    {
+        var battleContext = new BattleContext
+        {
+            InBattle = true,
+            OpponentName = opponentName,
+            ActivePokemonNickname = activePokemonNickname,
+            TurnCount = 0,
+            BattleLog = new List<string>(),
+            BattleStartedAt = DateTime.UtcNow,
+            BattleType = battleType
+        };
+
+        await SaveBattleContextAsync(sessionId, battleContext);
+        _logger.LogInformation("Battle started against {Opponent} (session {SessionId})", opponentName, sessionId);
+        return battleContext;
+    }
+
+    public Task<bool> AddBattleLogAsync(string logEntry) => AddBattleLogAsync("default", logEntry);
+
+    public async Task<bool> AddBattleLogAsync(string sessionId, string logEntry)
+    {
+        var battleContext = await GetBattleContextAsync(sessionId);
+        if (!battleContext.InBattle)
+        {
+            _logger.LogWarning("Cannot add battle log: no active battle (session {SessionId})", sessionId);
+            return false;
+        }
+
+        battleContext.TurnCount++;
+        battleContext.BattleLog.Add($"[Turn {battleContext.TurnCount}] {logEntry}");
+        await SaveBattleContextAsync(sessionId, battleContext);
+        _logger.LogInformation("Added battle log entry (turn {Turn}, session {SessionId})", battleContext.TurnCount, sessionId);
+        return true;
+    }
+
+    public Task<bool> EndBattleAsync() => EndBattleAsync("default");
+
+    public async Task<bool> EndBattleAsync(string sessionId)
+    {
+        var battleContext = await GetBattleContextAsync(sessionId);
+        if (!battleContext.InBattle)
+        {
+            _logger.LogWarning("Cannot end battle: no active battle (session {SessionId})", sessionId);
+            return false;
+        }
+
+        await SaveBattleContextAsync(sessionId, new BattleContext());
+        _logger.LogInformation("Battle ended (session {SessionId})", sessionId);
+        return true;
+    }
+
+    private async Task SaveBattleContextAsync(string sessionId, BattleContext battleContext)
+    {
+        if (_sessionManager == null || sessionId == "default")
+        {
+            await _fileLock.WaitAsync();
+            try
+            {
+                var json = JsonSerializer.Serialize(battleContext, _jsonOptions);
+                await File.WriteAllTextAsync(BattleContextFilePath, json);
+            }
+            finally { _fileLock.Release(); }
+            return;
+        }
+
+        try
+        {
+            var fileData = await _sessionManager.LoadSessionDataAsync(sessionId);
+            fileData.BattleContext = battleContext;
+            await _sessionManager.SaveSessionDataAsync(sessionId, fileData);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error saving battle context for {SessionId}", sessionId);
+        }
+    }
 }

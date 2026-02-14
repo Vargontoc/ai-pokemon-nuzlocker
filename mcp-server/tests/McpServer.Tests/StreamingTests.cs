@@ -127,6 +127,14 @@ public class StreamingTests
         public Task SaveStateAsync(string sessionId, NuzlockeState state) { _state = state; return Task.CompletedTask; }
         public Task<bool> RecordEncounterAsync(string location, string? capturedSpecies = null, string? capturedNickname = null) => Task.FromResult(true);
         public Task<bool> RecordEncounterAsync(string sessionId, string location, string? capturedSpecies = null, string? capturedNickname = null) => Task.FromResult(true);
+        public Task<BattleContext> GetBattleContextAsync() => Task.FromResult(new BattleContext());
+        public Task<BattleContext> GetBattleContextAsync(string sessionId) => Task.FromResult(new BattleContext());
+        public Task<BattleContext> StartBattleAsync(string opponentName, string? activePokemonNickname = null, string? battleType = null) => Task.FromResult(new BattleContext { InBattle = true, OpponentName = opponentName });
+        public Task<BattleContext> StartBattleAsync(string sessionId, string opponentName, string? activePokemonNickname = null, string? battleType = null) => Task.FromResult(new BattleContext { InBattle = true, OpponentName = opponentName });
+        public Task<bool> AddBattleLogAsync(string logEntry) => Task.FromResult(true);
+        public Task<bool> AddBattleLogAsync(string sessionId, string logEntry) => Task.FromResult(true);
+        public Task<bool> EndBattleAsync() => Task.FromResult(true);
+        public Task<bool> EndBattleAsync(string sessionId) => Task.FromResult(true);
     }
 
     private class FakePokeApiConnector : IPokeApiConnector

@@ -31,6 +31,10 @@ public class NuzlockeAgentFunctionCallingTests
             mockPokeApiConnector.Object,
             mockToolExecutorLogger.Object);
 
+        // Default setup for battle context (returns empty/no battle)
+        _mockStateManager.Setup(m => m.GetBattleContextAsync()).ReturnsAsync(new BattleContext());
+        _mockStateManager.Setup(m => m.GetBattleContextAsync(It.IsAny<string>())).ReturnsAsync(new BattleContext());
+
         _agent = new NuzlockeAgent(
             _mockAiProvider.Object,
             _mockStateManager.Object,

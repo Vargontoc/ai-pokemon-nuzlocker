@@ -238,13 +238,76 @@ public static class ToolDefinitions
         }
     };
 
+    public static readonly ToolDefinition StartBattle = new()
+    {
+        Name = "start_battle",
+        Description = "Start a new battle. Clears any previous battle context and creates a fresh one. Call this when the user enters combat.",
+        Parameters = new ToolParameters
+        {
+            Type = "object",
+            Properties = new Dictionary<string, ToolProperty>
+            {
+                ["opponentName"] = new ToolProperty
+                {
+                    Type = "string",
+                    Description = "Name of the opponent (e.g., 'Gym Leader Brock', 'Wild Geodude', 'Rival Blue')"
+                },
+                ["activePokemonNickname"] = new ToolProperty
+                {
+                    Type = "string",
+                    Description = "Nickname of the Pokemon the player is leading with (optional)"
+                },
+                ["battleType"] = new ToolProperty
+                {
+                    Type = "string",
+                    Description = "Type of battle: 'wild', 'trainer', 'gym_leader', 'rival', 'elite_four' (optional)"
+                }
+            },
+            Required = new List<string> { "opponentName" }
+        }
+    };
+
+    public static readonly ToolDefinition AddBattleLog = new()
+    {
+        Name = "add_battle_log",
+        Description = "Add a log entry to the current battle. Use this to record important battle events (damage dealt, switches, items used, etc.)",
+        Parameters = new ToolParameters
+        {
+            Type = "object",
+            Properties = new Dictionary<string, ToolProperty>
+            {
+                ["logEntry"] = new ToolProperty
+                {
+                    Type = "string",
+                    Description = "Description of the battle event (e.g., 'Sparky used Thunderbolt on Onix - not very effective')"
+                }
+            },
+            Required = new List<string> { "logEntry" }
+        }
+    };
+
+    public static readonly ToolDefinition EndBattle = new()
+    {
+        Name = "end_battle",
+        Description = "End the current battle and clear the battle context. Call this when the battle concludes.",
+        Parameters = new ToolParameters
+        {
+            Type = "object",
+            Properties = new Dictionary<string, ToolProperty>(),
+            Required = new List<string>()
+        }
+    };
+
     public static IEnumerable<ToolDefinition> AllTools => new[]
     {
         GetGameState,
         AddToTeam,
         MarkAsDead,
         MoveToPC,
-        RecordEncounter
+        RecordEncounter,
+        StartBattle,
+        AddBattleLog,
+        EndBattle
     };
 }
 

@@ -174,11 +174,100 @@ public class StateManagerTests : IDisposable
         Assert.False(success); // Nuzlocke rule: only one Pokemon per route
     }
 
+    // ========== BATTLE CONTEXT TESTS ==========
+
+    [Fact]
+    public async Task GetBattleContextAsync_ReturnsEmptyWhenNoBattle()
+    {
+        var bc = await _stateManager.GetBattleContextAsync();
+        Assert.False(bc.InBattle);
+    }
+
+    [Fact]
+    public async Task StartBattleAsync_CreatesNewBattleContext()
+    {
+        var bc = await _stateManager.StartBattleAsync("Gym Leader Brock", "Sparky", "gym_leader");
+
+        Assert.True(bc.InBattle);
+        Assert.Equal("Gym Leader Brock", bc.OpponentName);
+        Assert.Equal("Sparky", bc.ActivePokemonNickname);
+        Assert.Equal("gym_leader", bc.BattleType);
+        Assert.Equal(0, bc.TurnCount);
+        Assert.Empty(bc.BattleLog);
+        Assert.NotNull(bc.BattleStartedAt);
+    }
+
+    [Fact]
+    public async Task StartBattleAsync_OverwritesPreviousBattle()
+    {
+        await _stateManager.StartBattleAsync("Wild Rattata");
+        await _stateManager.AddBattleLogAsync("Sparky used Tackle");
+
+        var bc = await _stateManager.StartBattleAsync("Gym Leader Misty");
+
+        Assert.True(bc.InBattle);
+        Assert.Equal("Gym Leader Misty", bc.OpponentName);
+        Assert.Equal(0, bc.TurnCount);
+        Assert.Empty(bc.BattleLog);
+    }
+
+    [Fact]
+    public async Task AddBattleLogAsync_AppendsEntryAndIncrementsTurn()
+    {
+        await _stateManager.StartBattleAsync("Wild Geodude");
+
+        var ok1 = await _stateManager.AddBattleLogAsync("Sparky used Thunderbolt");
+        var ok2 = await _stateManager.AddBattleLogAsync("Geodude fainted");
+
+        var bc = await _stateManager.GetBattleContextAsync();
+
+        Assert.True(ok1);
+        Assert.True(ok2);
+        Assert.Equal(2, bc.TurnCount);
+        Assert.Equal(2, bc.BattleLog.Count);
+        Assert.Contains("[Turn 1]", bc.BattleLog[0]);
+        Assert.Contains("[Turn 2]", bc.BattleLog[1]);
+    }
+
+    [Fact]
+    public async Task AddBattleLogAsync_ReturnsFalseWhenNoBattle()
+    {
+        var result = await _stateManager.AddBattleLogAsync("some event");
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task EndBattleAsync_ClearsBattleContext()
+    {
+        await _stateManager.StartBattleAsync("Rival Blue");
+        await _stateManager.AddBattleLogAsync("Sparky used Quick Attack");
+
+        var ended = await _stateManager.EndBattleAsync();
+        var bc = await _stateManager.GetBattleContextAsync();
+
+        Assert.True(ended);
+        Assert.False(bc.InBattle);
+        Assert.Empty(bc.BattleLog);
+    }
+
+    [Fact]
+    public async Task EndBattleAsync_ReturnsFalseWhenNoBattle()
+    {
+        var result = await _stateManager.EndBattleAsync();
+        Assert.False(result);
+    }
+
     public void Dispose()
     {
         if (File.Exists(_testFilePath))
         {
             File.Delete(_testFilePath);
+        }
+
+        var battlePath = Path.ChangeExtension(_testFilePath, ".battle.json");
+        if (File.Exists(battlePath))
+        {
+            File.Delete(battlePath);
         }
     }
 }

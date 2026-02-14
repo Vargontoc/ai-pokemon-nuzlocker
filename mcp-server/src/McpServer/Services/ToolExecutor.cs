@@ -46,6 +46,9 @@ public class ToolExecutor
                 "mark_as_dead" => await ExecuteMarkAsDeadAsync(toolCall),
                 "move_to_pc" => await ExecuteMoveToPcAsync(toolCall),
                 "record_encounter" => await ExecuteRecordEncounterAsync(toolCall),
+                "start_battle" => await ExecuteStartBattleAsync(toolCall),
+                "add_battle_log" => await ExecuteAddBattleLogAsync(toolCall),
+                "end_battle" => await ExecuteEndBattleAsync(toolCall),
                 "get_pokemon" => await ExecuteGetPokemonAsync(toolCall),
                 "get_move" => await ExecuteGetMoveAsync(toolCall),
                 "get_type" => await ExecuteGetTypeAsync(toolCall),
@@ -274,6 +277,78 @@ public class ToolExecutor
         public string? SessionId { get; set; }
     }
 
+    private async Task<ToolCallResult> ExecuteStartBattleAsync(ToolCall toolCall)
+    {
+        var args = JsonSerializer.Deserialize<StartBattleArgs>(toolCall.ArgumentsJson, _jsonOptions);
+        if (args == null || string.IsNullOrEmpty(args.OpponentName))
+            throw new InvalidOperationException("Invalid arguments for start_battle");
+
+        var battleContext = string.IsNullOrEmpty(args.SessionId)
+            ? await _stateManager.StartBattleAsync(args.OpponentName, args.ActivePokemonNickname, args.BattleType)
+            : await _stateManager.StartBattleAsync(args.SessionId, args.OpponentName, args.ActivePokemonNickname, args.BattleType);
+
+        return new ToolCallResult
+        {
+            ToolCallId = toolCall.Id,
+            ToolName = toolCall.Name,
+            Content = JsonSerializer.Serialize(new
+            {
+                success = true,
+                message = $"Battle started against {args.OpponentName}",
+                battleContext
+            }, _jsonOptions)
+        };
+    }
+
+    private async Task<ToolCallResult> ExecuteAddBattleLogAsync(ToolCall toolCall)
+    {
+        var args = JsonSerializer.Deserialize<AddBattleLogArgs>(toolCall.ArgumentsJson, _jsonOptions);
+        if (args == null || string.IsNullOrEmpty(args.LogEntry))
+            throw new InvalidOperationException("Invalid arguments for add_battle_log");
+
+        var success = string.IsNullOrEmpty(args.SessionId)
+            ? await _stateManager.AddBattleLogAsync(args.LogEntry)
+            : await _stateManager.AddBattleLogAsync(args.SessionId, args.LogEntry);
+
+        return new ToolCallResult
+        {
+            ToolCallId = toolCall.Id,
+            ToolName = toolCall.Name,
+            Content = JsonSerializer.Serialize(new
+            {
+                success,
+                message = success ? "Battle log entry added" : "No active battle to log to"
+            }, _jsonOptions)
+        };
+    }
+
+    private async Task<ToolCallResult> ExecuteEndBattleAsync(ToolCall toolCall)
+    {
+        string? sessionId = null;
+        try
+        {
+            var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(toolCall.ArgumentsJson) ? "{}" : toolCall.ArgumentsJson);
+            if (doc.RootElement.TryGetProperty("sessionId", out var sidEl) && sidEl.ValueKind == JsonValueKind.String)
+                sessionId = sidEl.GetString();
+        }
+        catch { }
+
+        var success = string.IsNullOrEmpty(sessionId)
+            ? await _stateManager.EndBattleAsync()
+            : await _stateManager.EndBattleAsync(sessionId);
+
+        return new ToolCallResult
+        {
+            ToolCallId = toolCall.Id,
+            ToolName = toolCall.Name,
+            Content = JsonSerializer.Serialize(new
+            {
+                success,
+                message = success ? "Battle ended" : "No active battle to end"
+            }, _jsonOptions)
+        };
+    }
+
     private async Task<ToolCallResult> ExecuteGetPokemonAsync(ToolCall toolCall)
     {
         var args = JsonSerializer.Deserialize<PokeApiArgs>(toolCall.ArgumentsJson, _jsonOptions);
@@ -397,6 +472,20 @@ public class ToolExecutor
                 ? JsonSerializer.Serialize(item, _jsonOptions)
                 : JsonSerializer.Serialize(new { error = $"Item '{args.NameOrId}' not found" }, _jsonOptions)
         };
+    }
+
+    private class StartBattleArgs
+    {
+        public string OpponentName { get; set; } = string.Empty;
+        public string? ActivePokemonNickname { get; set; }
+        public string? BattleType { get; set; }
+        public string? SessionId { get; set; }
+    }
+
+    private class AddBattleLogArgs
+    {
+        public string LogEntry { get; set; } = string.Empty;
+        public string? SessionId { get; set; }
     }
 
     private class PokeApiArgs
