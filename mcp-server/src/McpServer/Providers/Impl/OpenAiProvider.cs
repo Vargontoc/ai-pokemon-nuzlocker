@@ -57,7 +57,11 @@ public class OpenAiProvider : IAiProvider
 
             _logger.LogDebug("Sending request to OpenAI: model={Model}", _options.Model);
 
-            var response = await _client.CompleteChatAsync(messages, completionOptions, cancellationToken);
+            var response = await RetryHelper.ExecuteWithRetriesAsync(
+                () => _client.CompleteChatAsync(messages, completionOptions, cancellationToken),
+                _options.MaxRetries,
+                _logger,
+                cancellationToken);
 
             if (response?.Value?.Content == null || response.Value.Content.Count == 0)
             {
@@ -154,7 +158,11 @@ public class OpenAiProvider : IAiProvider
 
             _logger.LogDebug("Sending request to OpenAI with {ToolCount} tools", chatTools.Count);
 
-            var response = await _client.CompleteChatAsync(messages, completionOptions, cancellationToken);
+            var response = await RetryHelper.ExecuteWithRetriesAsync(
+                () => _client.CompleteChatAsync(messages, completionOptions, cancellationToken),
+                _options.MaxRetries,
+                _logger,
+                cancellationToken);
 
             var aiResponse = new AiResponse();
 

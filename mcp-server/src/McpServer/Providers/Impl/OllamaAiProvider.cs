@@ -34,26 +34,6 @@ public class OllamaAiProvider : IAiProvider
         _httpClient.Timeout = TimeSpan.FromMinutes(10); // 10 minutes
     }
 
-    // Lightweight retry helper with exponential backoff + jitter
-    private async Task<T> ExecuteWithRetriesAsync<T>(Func<Task<T>> action, int maxRetries = 3)
-    {
-        var rnd = new Random();
-        var attempt = 0;
-        while (true)
-        {
-            try
-            {
-                return await action();
-            }
-            catch (HttpRequestException) when (attempt < maxRetries)
-            {
-                attempt++;
-                var delayMs = (int)(Math.Pow(2, attempt) * 100) + rnd.Next(0, 100);
-                _logger.LogWarning("Transient HTTP error; retrying attempt {Attempt} after {Delay}ms", attempt, delayMs);
-                await Task.Delay(delayMs);
-            }
-        }
-    }
 
     public async Task<string> GetCompletionAsync(
         string systemPrompt,
@@ -84,7 +64,11 @@ public class OllamaAiProvider : IAiProvider
 
             _logger.LogDebug("Sending request to Ollama: {BaseUrl}/api/generate", _options.BaseUrl);
 
-            var response = await ExecuteWithRetriesAsync(async () => await _httpClient.PostAsync("/api/generate", content, cancellationToken));
+            var response = await RetryHelper.ExecuteWithRetriesAsync(
+                () => _httpClient.PostAsync("/api/generate", content, cancellationToken),
+                _options.MaxRetries,
+                _logger,
+                cancellationToken);
             response.EnsureSuccessStatusCode();
 
             var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -188,7 +172,11 @@ public class OllamaAiProvider : IAiProvider
                 string.Join(',', ollamaTools.Select(t => ((dynamic)t).function.name)),
                 requestJson.Length / 1024.0);
 
-            var response = await ExecuteWithRetriesAsync(async () => await _httpClient.PostAsync("/api/chat", content, cancellationToken));
+            var response = await RetryHelper.ExecuteWithRetriesAsync(
+                () => _httpClient.PostAsync("/api/chat", content, cancellationToken),
+                _options.MaxRetries,
+                _logger,
+                cancellationToken);
 
             if (!response.IsSuccessStatusCode)
             {

@@ -57,7 +57,11 @@ public class ClaudeAiProvider : IAiProvider
 
             _logger.LogDebug("Sending request to Claude API: model={Model}", _options.Model);
 
-            var response = await _client.Messages.GetClaudeMessageAsync(parameters, cancellationToken);
+            var response = await RetryHelper.ExecuteWithRetriesAsync(
+                () => _client.Messages.GetClaudeMessageAsync(parameters, cancellationToken),
+                _options.MaxRetries,
+                _logger,
+                cancellationToken);
 
             if (response?.Content == null || response.Content.Count == 0)
             {
@@ -159,7 +163,11 @@ public class ClaudeAiProvider : IAiProvider
 
             _logger.LogDebug("Sending request to Claude API with {ToolCount} tools", claudeTools.Count);
 
-            var response = await _client.Messages.GetClaudeMessageAsync(parameters, cancellationToken);
+            var response = await RetryHelper.ExecuteWithRetriesAsync(
+                () => _client.Messages.GetClaudeMessageAsync(parameters, cancellationToken),
+                _options.MaxRetries,
+                _logger,
+                cancellationToken);
 
             var aiResponse = new AiResponse();
 

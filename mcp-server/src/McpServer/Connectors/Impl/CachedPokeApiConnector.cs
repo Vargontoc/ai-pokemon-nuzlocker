@@ -70,6 +70,15 @@ public class CachedPokeApiConnector : IPokeApiConnector
         }
 
         subset.SpriteMin = null;
+
+        // Token metrics: measure reduction
+        var fullBytes = System.Text.Encoding.UTF8.GetByteCount(JsonSerializer.Serialize(full));
+        var subsetBytes = System.Text.Encoding.UTF8.GetByteCount(JsonSerializer.Serialize(subset));
+        var reductionPct = (1.0 - (double)subsetBytes / fullBytes) * 100;
+        _logger.LogInformation(
+            "TokenMetrics Pokemon '{Name}': full={FullBytes}B subset={SubsetBytes}B reduction={Reduction:F1}%",
+            nameOrId, fullBytes, subsetBytes, reductionPct);
+
         return subset;
     }
 

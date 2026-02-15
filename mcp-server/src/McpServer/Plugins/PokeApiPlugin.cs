@@ -12,41 +12,22 @@ public class PokeApiPlugin(ILogger<PokeApiPlugin> _logger, IPokeApiConnector _po
 {
 
     [KernelFunction("get_pokemon")]
-    [Description("Get detailed information about a Pokemon including stats, types, abilities, and moves. Use this to analyze Pokemon for strategic decisions.")]
-    [return: Description("JSON with Pokemon data including stats, types, abilities, and available moves")]
+    [Description("Get optimized information about a Pokemon including stats, types, and key moves. Use this to analyze Pokemon for strategic decisions.")]
+    [return: Description("JSON with Pokemon subset data including stats, types, and key moves")]
     public async Task<string> GetPokemonAsync(
         [Description("Pokemon name or ID (e.g., 'pikachu', 'charizard', or '25')")] string nameOrId)
     {
         try
         {
             _logger.LogInformation("GetPokemonAsync called with {nameOrId}", nameOrId);
-            var pokemon = await _pokeApiConnector.GetPokemonAsync(nameOrId.ToLower());
+            var pokemon = await _pokeApiConnector.GetPokemonSubsetAsync(nameOrId.ToLower());
             if (pokemon == null)
             {
                 _logger.LogWarning("Pokemon not found: {nameOrId}", nameOrId);
                 return JsonSerializer.Serialize(new { error = $"Pokemon '{nameOrId}' not found" });
             }
 
-            var payload = JsonSerializer.Serialize(new
-            {
-                id = pokemon.Id,
-                name = pokemon.Name,
-                types = pokemon.Types.Select(t => t.Type.Name),
-                stats = pokemon.Stats.Select(s => new
-                {
-                    name = s.Stat.Name,
-                    baseStat = s.BaseStat,
-                    effort = s.Effort
-                }),
-                abilities = pokemon.Abilities.Select(a => new
-                {
-                    name = a.Ability.Name,
-                    isHidden = a.IsHidden
-                }),
-                height = pokemon.Height,
-                weight = pokemon.Weight,
-                baseExperience = pokemon.BaseExperience
-            }, new JsonSerializerOptions { WriteIndented = true });
+            var payload = JsonSerializer.Serialize(pokemon, new JsonSerializerOptions { WriteIndented = true });
 
             _logger.LogDebug("GetPokemonAsync returning payload length {len} for {nameOrId}", payload?.Length ?? 0, nameOrId);
             return payload!;

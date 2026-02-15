@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using es.vargontoc.nuzlocke.ai.Configuration;
 using es.vargontoc.nuzlocke.ai.Models;
@@ -52,6 +53,14 @@ public class PokeApiConnector : IPokeApiConnector
 
         // Sprite not modeled in PokemonData currently; leave null
         subset.SpriteMin = null;
+
+        // Token metrics: measure reduction
+        var fullBytes = Encoding.UTF8.GetByteCount(JsonSerializer.Serialize(full));
+        var subsetBytes = Encoding.UTF8.GetByteCount(JsonSerializer.Serialize(subset));
+        var reductionPct = (1.0 - (double)subsetBytes / fullBytes) * 100;
+        _logger.LogInformation(
+            "TokenMetrics Pokemon '{Name}': full={FullBytes}B subset={SubsetBytes}B reduction={Reduction:F1}%",
+            nameOrId, fullBytes, subsetBytes, reductionPct);
 
         return subset;
     }

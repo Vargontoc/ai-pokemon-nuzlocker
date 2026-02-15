@@ -33,4 +33,14 @@ public class AiOptions
     /// Temperature for response generation (0.0 - 1.0)
     /// </summary>
     public double Temperature { get; set; } = 0.7;
+
+    /// <summary>
+    /// Maximum number of retries for transient errors (HTTP, timeout)
+    /// </summary>
+    public int MaxRetries { get; set; } = 3;
+
+    /// <summary>
+    /// Timeout in seconds for AI provider requests
+    /// </summary>
+    public int TimeoutSeconds { get; set; } = 120;
 }

@@ -9,12 +9,12 @@ namespace es.vargontoc.nuzlocke.ai.Tools;
 public static class PokeApiTools
 {
     [McpServerTool]
-    [Description("Get detailed information about a Pokemon by name or ID. Returns stats, types, abilities, and moves.")]
+    [Description("Get optimized information about a Pokemon by name or ID. Returns stats, types, and key moves (subset for token efficiency).")]
     public static async Task<string> GetPokemon(
         IPokeApiConnector connector,
         [Description("The name or ID of the Pokemon (e.g., 'pikachu' or '25')")] string nameOrId)
     {
-        var pokemon = await connector.GetPokemonAsync(nameOrId);
+        var pokemon = await connector.GetPokemonSubsetAsync(nameOrId);
 
         if (pokemon == null)
         {
