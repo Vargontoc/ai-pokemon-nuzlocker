@@ -50,6 +50,16 @@ public interface IStateManager
 
     Task<bool> RecordEncounterAsync(string sessionId, string location, string? capturedSpecies = null, string? capturedNickname = null);
 
+    // --- Inventory ---
+
+    Task<bool> AddInventoryItemAsync(string itemName, int quantity, string category);
+    Task<bool> AddInventoryItemAsync(string sessionId, string itemName, int quantity, string category);
+
+    // --- Moves ---
+
+    Task<bool> UpdateMovesAsync(string nickname, List<string> moves);
+    Task<bool> UpdateMovesAsync(string sessionId, string nickname, List<string> moves);
+
     // --- Battle Context ---
 
     Task<BattleContext> GetBattleContextAsync();

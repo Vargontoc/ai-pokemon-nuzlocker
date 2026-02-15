@@ -146,9 +146,10 @@ Provide strategic advice based on the current state and the user's question.";
                 _logger.LogWarning(ex, "Prefetch via PokeApiAgent failed; continuing without external data");
             }
 
-            // Get available tools
-            // TEMPORARY: Only using Nuzlocke tools to debug Ollama crash with 10 tools
-            var tools = ToolDefinitions.AllTools;
+            // Select tools based on current context (battle vs exploration)
+            var tools = ToolDefinitions.GetContextualTools(battleContext.InBattle);
+            _logger.LogInformation("Selected {Count} contextual tools (inBattle={InBattle})",
+                tools.Count(), battleContext.InBattle);
 
             // Multi-turn conversation cycle with tool calling
             var toolResults = new List<ToolCallResult>();

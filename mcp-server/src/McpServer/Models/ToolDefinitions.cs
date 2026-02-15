@@ -309,6 +309,36 @@ public static class ToolDefinitions
         AddBattleLog,
         EndBattle
     };
+
+    /// <summary>
+    /// Returns only the tools relevant to the current context.
+    /// PokeAPI info tools (get_pokemon, get_move, get_type) are always available.
+    /// In battle: + battle tools (add_battle_log, end_battle)
+    /// Out of battle: + team management tools + start_battle
+    /// </summary>
+    public static IEnumerable<ToolDefinition> GetContextualTools(bool inBattle)
+    {
+        yield return GetGameState;
+
+        // PokeAPI info tools — always available for strategic advice
+        yield return GetPokemon;
+        yield return GetMove;
+        yield return GetType;
+
+        if (inBattle)
+        {
+            yield return AddBattleLog;
+            yield return EndBattle;
+        }
+        else
+        {
+            yield return AddToTeam;
+            yield return MarkAsDead;
+            yield return MoveToPC;
+            yield return RecordEncounter;
+            yield return StartBattle;
+        }
+    }
 }
 
 public class ToolDefinition

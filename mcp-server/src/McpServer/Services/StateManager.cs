@@ -245,6 +245,62 @@ public class StateManager : IStateManager
         return true;
     }
 
+    // ========== INVENTORY METHODS ==========
+
+    public Task<bool> AddInventoryItemAsync(string itemName, int quantity, string category)
+        => AddInventoryItemAsync("default", itemName, quantity, category);
+
+    public async Task<bool> AddInventoryItemAsync(string sessionId, string itemName, int quantity, string category)
+    {
+        var state = await GetStateAsync(sessionId);
+
+        var existing = state.Inventory.FirstOrDefault(i =>
+            i.Name.Equals(itemName, StringComparison.OrdinalIgnoreCase));
+
+        if (existing != null)
+        {
+            existing.Quantity += quantity;
+            _logger.LogInformation("Updated inventory item {Item}: quantity now {Qty}", itemName, existing.Quantity);
+        }
+        else
+        {
+            state.Inventory.Add(new InventoryItem
+            {
+                Name = itemName,
+                Quantity = quantity,
+                Category = category
+            });
+            _logger.LogInformation("Added inventory item {Item} x{Qty} ({Category})", itemName, quantity, category);
+        }
+
+        await SaveStateAsync(sessionId, state);
+        return true;
+    }
+
+    // ========== MOVES METHODS ==========
+
+    public Task<bool> UpdateMovesAsync(string nickname, List<string> moves)
+        => UpdateMovesAsync("default", nickname, moves);
+
+    public async Task<bool> UpdateMovesAsync(string sessionId, string nickname, List<string> moves)
+    {
+        var state = await GetStateAsync(sessionId);
+
+        var pokemon = state.Team.FirstOrDefault(p =>
+            p.Nickname.Equals(nickname, StringComparison.OrdinalIgnoreCase));
+
+        if (pokemon == null)
+        {
+            _logger.LogWarning("Cannot update moves for {Nickname}: not found in team", nickname);
+            return false;
+        }
+
+        pokemon.Moves = moves;
+        await SaveStateAsync(sessionId, state);
+        _logger.LogInformation("Updated moves for {Nickname}: {Moves}", nickname, string.Join(", ", moves));
+        return true;
+    }
+
     // ========== BATTLE CONTEXT METHODS ==========
 
     private string BattleContextFilePath => Path.ChangeExtension(_stateFilePath, ".battle.json");

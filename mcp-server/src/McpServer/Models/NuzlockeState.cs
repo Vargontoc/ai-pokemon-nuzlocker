@@ -26,6 +26,26 @@ public class NuzlockeState
     public Dictionary<string, EncounterRecord> Encounters { get; set; } = new();
 
     /// <summary>
+    /// Inventario del jugador
+    /// </summary>
+    public List<InventoryItem> Inventory { get; set; } = new();
+
+    /// <summary>
+    /// Historial de batallas completadas (para futuro ML)
+    /// </summary>
+    public List<BattleRecord> BattleHistory { get; set; } = new();
+
+    /// <summary>
+    /// Generación del juego (1 por defecto, extensible)
+    /// </summary>
+    public int Generation { get; set; } = 1;
+
+    /// <summary>
+    /// Variante de Nuzlocke (standard, hardcore, etc.)
+    /// </summary>
+    public string LockeType { get; set; } = "standard";
+
+    /// <summary>
     /// Fecha de inicio de la partida
     /// </summary>
     public DateTime StartDate { get; set; } = DateTime.UtcNow;

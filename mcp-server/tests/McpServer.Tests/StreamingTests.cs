@@ -135,6 +135,10 @@ public class StreamingTests
         public Task<bool> AddBattleLogAsync(string sessionId, string logEntry) => Task.FromResult(true);
         public Task<bool> EndBattleAsync() => Task.FromResult(true);
         public Task<bool> EndBattleAsync(string sessionId) => Task.FromResult(true);
+        public Task<bool> AddInventoryItemAsync(string itemName, int quantity, string category) => Task.FromResult(true);
+        public Task<bool> AddInventoryItemAsync(string sessionId, string itemName, int quantity, string category) => Task.FromResult(true);
+        public Task<bool> UpdateMovesAsync(string nickname, List<string> moves) => Task.FromResult(true);
+        public Task<bool> UpdateMovesAsync(string sessionId, string nickname, List<string> moves) => Task.FromResult(true);
     }
 
     private class FakePokeApiConnector : IPokeApiConnector

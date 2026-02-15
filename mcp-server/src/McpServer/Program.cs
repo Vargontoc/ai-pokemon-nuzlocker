@@ -8,6 +8,7 @@ using es.vargontoc.nuzlocke.ai.Services;
 using es.vargontoc.nuzlocke.ai.Providers;
 using es.vargontoc.nuzlocke.ai.Providers.Impl;
 using es.vargontoc.nuzlocke.ai.Models;
+using es.vargontoc.nuzlocke.ai.Workflows;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -152,6 +153,14 @@ builder.Services.AddScoped<Kernel>(sp =>
 builder.Services.AddScoped<PokeApiAgent>();
 // Register NuzlockeAgent so it can be injected into minimal API endpoints
 builder.Services.AddScoped<NuzlockeAgent>();
+
+// Register Workflow System
+builder.Services.AddScoped<IWorkflowEngine, WorkflowEngine>();
+// Workflows will be registered here as they are implemented in future sprints:
+// builder.Services.AddScoped<IWorkflow, InitNuzlockeWorkflow>();
+// builder.Services.AddScoped<IWorkflow, CapturePokemonWorkflow>();
+// etc.
+
 // Configure MCP Server
 builder.Services
     .AddMcpServer()
@@ -310,6 +319,27 @@ app.MapPost("/nuzlocke/advice/stream", async (AdviceRequest request, NuzlockeAge
         return Results.Problem(detail: ex.Message, statusCode: 500);
     }
 });
+
+// Workflow endpoints
+app.MapPost("/nuzlocke/workflow", async (WorkflowRequest request, IWorkflowEngine engine, CancellationToken ct) =>
+{
+    var logger = app.Services.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation("POST /nuzlocke/workflow: {WorkflowId}, session={SessionId}",
+        request.WorkflowId, request.SessionId);
+    try
+    {
+        var result = await engine.ExecuteAsync(request, ct);
+        return result.Success ? Results.Ok(result) : Results.BadRequest(result);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error executing workflow {WorkflowId}", request.WorkflowId);
+        return Results.Problem(detail: ex.Message, statusCode: 500);
+    }
+});
+
+app.MapGet("/nuzlocke/workflows", (IWorkflowEngine engine) =>
+    Results.Ok(new { workflows = engine.GetAvailableWorkflows() }));
 
 // Nuzlocke session management endpoints
 app.MapPost("/nuzlocke/sessions", async (CreateSessionRequest req, INuzlockeSessionManager sessions) =>

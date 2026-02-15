@@ -64,14 +64,20 @@ public class OllamaAiProvider : IAiProvider
 
             _logger.LogDebug("Sending request to Ollama: {BaseUrl}/api/generate", _options.BaseUrl);
 
+            // Use a dedicated timeout instead of the client's CancellationToken for Ollama calls.
+            // The client token (HttpContext.RequestAborted) fires when curl/client disconnects,
+            // which would cancel a slow-but-valid Ollama request prematurely.
+            using var ollamaCts = new CancellationTokenSource(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+            var ollamaToken = ollamaCts.Token;
+
             var response = await RetryHelper.ExecuteWithRetriesAsync(
-                () => _httpClient.PostAsync("/api/generate", content, cancellationToken),
+                () => _httpClient.PostAsync("/api/generate", content, ollamaToken),
                 _options.MaxRetries,
                 _logger,
-                cancellationToken);
+                ollamaToken);
             response.EnsureSuccessStatusCode();
 
-            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            var responseBody = await response.Content.ReadAsStringAsync(ollamaToken);
             var result = JsonSerializer.Deserialize<OllamaResponse>(responseBody, _jsonOptions);
 
             if (result?.Response == null)
@@ -157,7 +163,7 @@ public class OllamaAiProvider : IAiProvider
                 {
                     temperature = _options.Temperature,
                     num_predict = _options.MaxTokens,
-                    num_ctx = 4096  // Context window for 10 tools + system prompt + game state
+                    num_ctx = 8192  // Context window for tools + system prompt + game state
                 }
             };
 
@@ -172,21 +178,27 @@ public class OllamaAiProvider : IAiProvider
                 string.Join(',', ollamaTools.Select(t => ((dynamic)t).function.name)),
                 requestJson.Length / 1024.0);
 
+            // Use a dedicated timeout instead of the client's CancellationToken for Ollama calls.
+            // The client token (HttpContext.RequestAborted) fires when curl/client disconnects,
+            // which would cancel a slow-but-valid Ollama request prematurely.
+            using var ollamaCts = new CancellationTokenSource(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+            var ollamaToken = ollamaCts.Token;
+
             var response = await RetryHelper.ExecuteWithRetriesAsync(
-                () => _httpClient.PostAsync("/api/chat", content, cancellationToken),
+                () => _httpClient.PostAsync("/api/chat", content, ollamaToken),
                 _options.MaxRetries,
                 _logger,
-                cancellationToken);
+                ollamaToken);
 
             if (!response.IsSuccessStatusCode)
             {
-                var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                var errorBody = await response.Content.ReadAsStringAsync(ollamaToken);
                 _logger.LogError("Ollama returned {StatusCode}: {Error}", response.StatusCode, errorBody);
             }
 
             response.EnsureSuccessStatusCode();
 
-            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            var responseBody = await response.Content.ReadAsStringAsync(ollamaToken);
 
             // TEMPORARY DEBUG LOGGING
             _logger.LogInformation("Ollama raw response: {Response}", responseBody);

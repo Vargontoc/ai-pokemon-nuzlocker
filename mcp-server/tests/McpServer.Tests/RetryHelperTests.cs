@@ -1,3 +1,5 @@
+using System.IO;
+using System.Net.Sockets;
 using es.vargontoc.nuzlocke.ai.Providers;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -110,5 +112,58 @@ public class RetryHelperTests
     public void IsTransient_ArgumentException_ReturnsFalse()
     {
         Assert.False(RetryHelper.IsTransient(new ArgumentException("bad")));
+    }
+
+    [Fact]
+    public void IsTransient_IOException_ReturnsTrue()
+    {
+        Assert.True(RetryHelper.IsTransient(new IOException("connection reset")));
+    }
+
+    [Fact]
+    public void IsTransient_SocketException_ReturnsTrue()
+    {
+        Assert.True(RetryHelper.IsTransient(new SocketException()));
+    }
+
+    [Fact]
+    public void IsTransient_TaskCanceledWrappingIOException_ReturnsTrue()
+    {
+        // This is exactly the error from Ollama: TaskCanceledException -> IOException -> SocketException
+        var socketEx = new SocketException(995);
+        var ioEx = new IOException("Unable to read data from the transport connection", socketEx);
+        var tce = new TaskCanceledException("The operation was canceled.", ioEx);
+        Assert.True(RetryHelper.IsTransient(tce));
+    }
+
+    [Fact]
+    public void IsTransient_TaskCanceledWithNullInner_ReturnsFalse()
+    {
+        // Pure user cancellation (no inner exception) should NOT be retried
+        var tce = new TaskCanceledException();
+        Assert.False(RetryHelper.IsTransient(tce));
+    }
+
+    [Fact]
+    public async Task ExecuteWithRetriesAsync_RetriesOnSocketException()
+    {
+        var callCount = 0;
+        var result = await RetryHelper.ExecuteWithRetriesAsync(
+            () =>
+            {
+                callCount++;
+                if (callCount == 1)
+                {
+                    var socketEx = new SocketException(995);
+                    var ioEx = new IOException("transport error", socketEx);
+                    throw new TaskCanceledException("canceled", ioEx);
+                }
+                return Task.FromResult("recovered");
+            },
+            maxRetries: 3,
+            _mockLogger.Object);
+
+        Assert.Equal("recovered", result);
+        Assert.Equal(2, callCount);
     }
 }
