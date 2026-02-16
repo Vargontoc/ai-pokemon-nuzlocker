@@ -9,6 +9,7 @@ using es.vargontoc.nuzlocke.ai.Providers;
 using es.vargontoc.nuzlocke.ai.Providers.Impl;
 using es.vargontoc.nuzlocke.ai.Models;
 using es.vargontoc.nuzlocke.ai.Workflows;
+using es.vargontoc.nuzlocke.ai.Workflows.Setup;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -57,6 +58,9 @@ builder.Services.AddScoped<IPokeApiConnector>(sp =>
 
 // Register Nuzlocke session manager (before StateManager, which depends on it)
 builder.Services.AddSingleton<INuzlockeSessionManager, NuzlockeSessionManager>();
+
+// Register Nuzlocke file manager (per-nuzlocke folder structure)
+builder.Services.AddSingleton<INuzlockeFileManager, NuzlockeFileManager>();
 
 // Register Nuzlocke state manager
 builder.Services.AddSingleton<IStateManager, StateManager>();
@@ -156,8 +160,8 @@ builder.Services.AddScoped<NuzlockeAgent>();
 
 // Register Workflow System
 builder.Services.AddScoped<IWorkflowEngine, WorkflowEngine>();
-// Workflows will be registered here as they are implemented in future sprints:
-// builder.Services.AddScoped<IWorkflow, InitNuzlockeWorkflow>();
+builder.Services.AddScoped<IWorkflow, InitNuzlockeWorkflow>();
+// Future workflows:
 // builder.Services.AddScoped<IWorkflow, CapturePokemonWorkflow>();
 // etc.
 

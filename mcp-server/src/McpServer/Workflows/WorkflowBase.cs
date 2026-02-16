@@ -33,7 +33,7 @@ public abstract class WorkflowBase : IWorkflow
 
     public abstract IReadOnlyList<string> Validate(WorkflowParameters parameters);
 
-    public async Task<WorkflowResult> ExecuteAsync(WorkflowRequest request, CancellationToken ct = default)
+    public virtual async Task<WorkflowResult> ExecuteAsync(WorkflowRequest request, CancellationToken ct = default)
     {
         var errors = Validate(request.Parameters);
         if (errors.Count > 0)

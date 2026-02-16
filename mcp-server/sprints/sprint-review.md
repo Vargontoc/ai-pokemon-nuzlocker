@@ -1,64 +1,52 @@
-## Sprint Review [15-02-2026-Workflow-Init-Nuzlocke]
+## Sprint Review [15-02-2026-Workflow-Capture-Pokemon]
 
 ### Objetivos
-- [ ] Implementar workflow `init_nuzlocke` (Setup one-shot)
-    - [ ] `Workflows/Setup/InitNuzlockeWorkflow.cs`: Workflow de inicialización de partida Nuzlocke
-        - Input: `generation` (int, solo 1 por ahora), `locke_type` (string: "standard", "hardcore", etc.), `base_path` (string, obligatorio desde front)
-        - Validación: generation requerido (solo Gen 1), base_path requerido
-        - NuzlockeId: GUID + fecha de creación (ej: `a3f1b2c4_2026-02-15`)
-        - Crea estructura de carpetas:
-            ```
-            {base_path}/
-              └── {nuzlockeId}/
-                    ├── .nuzlocke          ← metadata (id, generation, locke_type, created_at)
-                    ├── game_state.json    ← NuzlockeState
-                    ├── memory/            ← contexto de memoria del agente
-                    └── results/           ← BattleRecords individuales (battle_001_vs_brock.json)
-            ```
-            - `battle_state.json` es temporal, solo existe durante batalla activa, se elimina al finalizar
-        - GenerateAdvice: LLM da tips de inicio (starter, early game survival)
-    - [ ] Refactorizar sistema de persistencia para nueva estructura
-        - [ ] `INuzlockeFileManager` (nuevo): interfaz para operaciones de fichero por nuzlocke
-            - CreateNuzlocke(basePath, generation, lockeType) → NuzlockeId + estructura creada
-            - LoadGameState(nuzlockeId) / SaveGameState(nuzlockeId, state)
-            - LoadBattleState(nuzlockeId) / SaveBattleState(nuzlockeId, battle) / DeleteBattleState(nuzlockeId)
-            - SaveBattleRecord(nuzlockeId, BattleRecord) → results/battle_NNN_vs_opponent.json
-            - ListNuzlockes(basePath) → lista de nuzlockes activos (leyendo .nuzlocke de cada carpeta)
-            - GetNuzlockeMetadata(nuzlockeId) → metadata desde .nuzlocke
-        - [ ] `NuzlockeFileManager`: implementación con ficheros JSON separados
-        - [ ] Adaptar `IStateManager` / `StateManager` para delegar en `INuzlockeFileManager`
-        - [ ] Mantener compatibilidad: endpoints de sesión existentes siguen funcionando
-    - [ ] Registrar `InitNuzlockeWorkflow` + `INuzlockeFileManager` en DI (`Program.cs`)
-    - [ ] Tests: `InitNuzlockeWorkflowTests.cs`
-        - [ ] Validación: generation requerido, gen != 1 rechazada, base_path requerido
-        - [ ] Estructura de carpetas creada correctamente
-        - [ ] .nuzlocke contiene metadata correcta (id, gen, type, fecha)
-        - [ ] game_state.json inicializado con Generation y LockeType
-        - [ ] GenerateAdvice: prompt contiene generación y tipo de locke
-    - [ ] Tests: `NuzlockeFileManagerTests.cs`
-        - [ ] CreateNuzlocke crea estructura completa
-        - [ ] ListNuzlockes descubre nuzlockes existentes
-        - [ ] Load/Save GameState + BattleState
-        - [ ] SaveBattleRecord genera fichero individual en results/
-        - [ ] DeleteBattleState limpia temporal
-    - [ ] Test manual: `curl POST /nuzlocke/workflow` con `init_nuzlocke`
-    - [ ] En {workspace}/app estaria el cliente web que consumiria estos workflows. Agregar o crear si no existiera un fichero llamado workflow.md que describa el workflow creado, los parametros que necesita y la respuesta que espera. Sin grandes añadidos es simplemente para que el equipo de front pueda implementarlo. 
+- [ ] Implementar workflow `capture_pokemon`
+    - [ ] `Workflows/Gameplay/CapturePokemonWorkflow.cs`
+        - Input: `nuzlocke_id` (string), `species` (string), `nickname` (string), `location` (string), `level` (int)
+        - Validación: todos los parámetros requeridos, nuzlocke_id debe existir
+        - FetchData: obtener datos del pokemon via `IPokeApiConnector` (CachedPokeApiConnector: L1 memory → L2 SQLite → PokeAPI). Stats, tipos, movimientos iniciales
+        - MutateState:
+            - `RecordEncounterAsync(location, species, nickname)` — regla de 1 captura por ruta
+            - Si equipo < 6: `AddToTeamAsync(TeamMember)`
+            - Si equipo = 6: `MoveToPCAsync` automático (añadir al PC directamente)
+            - Guardar estado via `INuzlockeFileManager`
+        - GenerateAdvice: LLM analiza el capturado vs equipo actual (tipos, coberturas, debilidades)
+        - Result.Data: datos del pokemon capturado (stats, tipos), destino ("team" o "pc")
+    - [ ] Adaptar `WorkflowBase` para que workflows de gameplay usen `nuzlocke_id` como sessionId
+        - El `nuzlocke_id` del request se usa para cargar/guardar estado via `INuzlockeFileManager` → `StateManager`
+    - [ ] Tests: `CapturePokemonWorkflowTests.cs`
+        - [ ] Validación: species, nickname, location, level, nuzlocke_id requeridos
+        - [ ] FetchData: llama a `IPokeApiConnector.GetPokemonAsync(species)` (mock en tests)
+        - [ ] MutateState: record_encounter + add_to_team cuando equipo < 6
+        - [ ] MutateState: record_encounter + move_to_pc cuando equipo = 6
+        - [ ] MutateState: falla si location ya tiene encounter (regla nuzlocke)
+        - [ ] GenerateAdvice: prompt contiene equipo actual + datos del capturado
+        - [ ] Result.Data contiene pokemon info y destino
+    - [ ] Registrar `CapturePokemonWorkflow` en DI (`Program.cs`)
+    - [ ] Actualizar `app/workflow.md` con documentación del nuevo workflow
+    - [ ] Tests manuales:
+        - [ ] `curl POST /nuzlocke/workflow` con `capture_pokemon` — captura exitosa (equipo vacío, va al team)
+        - [ ] `curl POST /nuzlocke/workflow` con `capture_pokemon` — captura con equipo lleno (va al PC)
+        - [ ] `curl POST /nuzlocke/workflow` con `capture_pokemon` — location duplicada (error regla nuzlocke)
 
 ### Aprobación Sprint review
 - [ ]
 
 ### Riesgos
-- [ ] Refactorizar persistencia puede romper tests existentes que usan `InMemoryStateManager` — mitigado: adaptar stubs
-- [ ] El front DEBE configurar `base_path` antes de poder operar — si no lo hace, ningún workflow funciona
-- [ ] Concurrencia en ficheros — reutilizar patrón `SemaphoreSlim` por nuzlockeId (como el session manager actual)
+- [ ] `IPokeApiConnector.GetPokemonAsync` puede devolver null si la species no existe — manejar con error descriptivo en el workflow
+- [ ] La regla de 1 captura por ruta depende de `RecordEncounterAsync` que ya valida duplicados — verificar que el error se propaga correctamente al WorkflowResult
+- [ ] El workflow necesita que `nuzlocke_id` esté en el path cache de `NuzlockeFileManager` — puede requerir `ListNuzlockesAsync` previo si el servidor se reinicia
 
 ### Fallos
 - [ ]
 
 ### Sugerencias para el próximo Sprint
-- [ ] **Workflow `capture_pokemon`**: Captura + record encounter + add to team/PC + análisis estratégico
-- [ ] **Workflow `start_battle` + `next_turn` + `end_battle`**: Ciclo completo de batalla con BattleRecord
-- [ ] **Workflow Fase 3 — Remaining**: `route_encounter`, `manage_moves`, `evolution`, `item_obtained`, `next_battle`
-- [ ] **NuzlockeAgent tests avanzados**: Tests de ciclo completo (con/sin tools), manejo de errores y timeouts
-- [ ] **Calculadora de daño Gen 1**: Implementar como nuevo MCP tool
-- [ ] **Streaming retry con RetryHelper**: Unificar `StreamWithRetriesAsync` de Ollama/OpenAI con el `RetryHelper` compartido
+- [ ] **Workflow `start_battle`**: Inicio de batalla con análisis estratégico del oponente
+- [ ] **Workflow `next_turn`**: Turno de batalla con log y consejo táctico
+- [ ] **Workflow `end_battle`**: Cierre de batalla con BattleRecord + bajas
+- [ ] **Workflow `route_encounter`**: Consejo sobre qué capturar en una ruta
+- [ ] **Workflow `manage_moves`**: Gestión de movimientos con análisis
+- [ ] **Workflow `evolution`**: Evolución de pokemon con análisis de nuevas capacidades
+- [ ] **Workflow `item_obtained`**: Registro de objetos con consejo de uso
+- [ ] **Workflow `next_battle`**: Preparación pre-batalla
