@@ -79,7 +79,8 @@ public class CapturePokemonWorkflow : WorkflowBase
             Parameters = request.Parameters,
             State = state,
             BattleContext = battleContext,
-            Result = new WorkflowResult { WorkflowId = WorkflowId, Success = true }
+            Result = new WorkflowResult { WorkflowId = WorkflowId, Success = true },
+            Language = request.Language
         };
 
         try
@@ -198,7 +199,8 @@ public class CapturePokemonWorkflow : WorkflowBase
             You are a Pokemon Nuzlocke advisor for Generation {context.State.Generation} ({context.State.LockeType} rules).
             Analyze a newly captured Pokemon in the context of the current team.
             Focus on: type coverage, strengths/weaknesses, and whether this Pokemon fills a gap in the team.
-            Keep the response under 200 words.
+            Keep the response under 250 words.
+            You answer in {context.Language} language.
             """;
     }
 
@@ -219,6 +221,7 @@ public class CapturePokemonWorkflow : WorkflowBase
         sb.AppendLine(BuildDeathsSummary(context.State));
         sb.AppendLine();
         sb.AppendLine("How does this capture help my team? Should I swap anyone out?");
+        sb.Append($"Respond me {context.Language} language");
         Logger.LogInformation(sb.ToString());
         return sb.ToString();
     }

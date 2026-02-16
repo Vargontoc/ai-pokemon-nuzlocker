@@ -61,7 +61,8 @@ public class InitNuzlockeWorkflow : WorkflowBase
             Parameters = request.Parameters,
             State = new NuzlockeState(),
             BattleContext = new BattleContext(),
-            Result = new WorkflowResult { WorkflowId = WorkflowId, Success = true }
+            Result = new WorkflowResult { WorkflowId = WorkflowId, Success = true },
+            Language = request.Language
         };
 
         try
@@ -116,7 +117,7 @@ public class InitNuzlockeWorkflow : WorkflowBase
             You are a Pokemon Nuzlocke advisor specialized in Generation {generation} ({lockeType} rules).
             Give concise, actionable tips for starting a new Nuzlocke run.
             Focus on: starter choice, early game survival, and key first encounters.
-            Keep the response under 200 words.
+            Keep the response under 250 words. And the answer must be {context.Language} language.
             """;
     }
 
@@ -128,6 +129,7 @@ public class InitNuzlockeWorkflow : WorkflowBase
         return $"""
             I'm starting a new Generation {generation} Nuzlocke ({lockeType} rules).
             What starter should I choose and what should I watch out for in the early game?
+            Responde me in {context.Language} language
             """;
     }
 }

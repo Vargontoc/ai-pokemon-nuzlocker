@@ -13,6 +13,8 @@ public class WorkflowRequest
 
     [JsonConverter(typeof(WorkflowParametersConverter))]
     public WorkflowParameters Parameters { get; set; } = new();
+
+    public string Language { get; set; } = "en-US";
 }
 
 /// <summary>

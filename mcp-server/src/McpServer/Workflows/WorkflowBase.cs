@@ -48,7 +48,8 @@ public abstract class WorkflowBase : IWorkflow
             Parameters = request.Parameters,
             State = state,
             BattleContext = battleContext,
-            Result = new WorkflowResult { WorkflowId = WorkflowId, Success = true }
+            Result = new WorkflowResult { WorkflowId = WorkflowId, Success = true },
+            Language = request.Language
         };
 
         try
@@ -146,7 +147,7 @@ public class WorkflowContext
     public required NuzlockeState State { get; set; }
     public required BattleContext BattleContext { get; set; }
     public required WorkflowResult Result { get; set; }
-
+    public required String Language { get; set; } = "en-US";
     /// <summary>
     /// Scratch space for passing fetched data between pipeline steps
     /// </summary>
