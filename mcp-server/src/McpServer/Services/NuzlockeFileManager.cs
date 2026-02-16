@@ -1,12 +1,14 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using es.vargontoc.nuzlocke.ai.Models;
+using es.vargontoc.nuzlocke.ai.Repositories;
 
 namespace es.vargontoc.nuzlocke.ai.Services;
 
 public class NuzlockeFileManager : INuzlockeFileManager
 {
     private readonly ILogger<NuzlockeFileManager> _logger;
+    private readonly INuzlockeRegistryRepository _registry;
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
     private readonly ConcurrentDictionary<string, string> _pathCache = new();
 
@@ -27,9 +29,75 @@ public class NuzlockeFileManager : INuzlockeFileManager
     private const string MemoryDirName = "memory";
     private const string ResultsDirName = "results";
 
-    public NuzlockeFileManager(ILogger<NuzlockeFileManager> logger)
+    public NuzlockeFileManager(ILogger<NuzlockeFileManager> logger, INuzlockeRegistryRepository registry)
     {
         _logger = logger;
+        _registry = registry;
+    }
+
+    public async Task InitializeAsync()
+    {
+        try
+        {
+            var all = await _registry.GetAllAsync();
+            var loaded = 0;
+            var skipped = 0;
+
+            foreach (var (id, path) in all)
+            {
+                if (!Directory.Exists(path))
+                {
+                    _logger.LogWarning("Registry entry {NuzlockeId} skipped: directory not found at {Path}", id, path);
+                    skipped++;
+                    continue;
+                }
+
+                // Validate .nuzlocke metadata matches SQLite registry
+                var metadataPath = Path.Combine(path, MetadataFileName);
+                if (!File.Exists(metadataPath))
+                {
+                    _logger.LogWarning("Registry entry {NuzlockeId} skipped: .nuzlocke metadata file not found at {Path}", id, path);
+                    skipped++;
+                    continue;
+                }
+
+                var metadata = await ReadJsonAsync<NuzlockeMetadata>(metadataPath);
+                if (metadata == null)
+                {
+                    _logger.LogWarning("Registry entry {NuzlockeId} skipped: failed to deserialize .nuzlocke metadata", id);
+                    skipped++;
+                    continue;
+                }
+
+                // Validate NuzlockeId matches
+                if (metadata.NuzlockeId != id)
+                {
+                    _logger.LogWarning("Registry entry {NuzlockeId} skipped: metadata NuzlockeId mismatch (expected {Expected}, got {Actual})",
+                        id, id, metadata.NuzlockeId);
+                    skipped++;
+                    continue;
+                }
+
+                // Validate Path consistency (metadata.BasePath + nuzlockeId should resolve to registry path)
+                var expectedPath = Path.Combine(metadata.BasePath, metadata.NuzlockeId);
+                if (!PathsAreEquivalent(expectedPath, path))
+                {
+                    _logger.LogWarning("Registry entry {NuzlockeId} skipped: path mismatch (registry: {RegistryPath}, metadata resolves to: {MetadataPath})",
+                        id, path, expectedPath);
+                    skipped++;
+                    continue;
+                }
+
+                _pathCache.TryAdd(id, path);
+                loaded++;
+            }
+
+            _logger.LogInformation("Registry initialized: {Loaded} loaded, {Skipped} skipped", loaded, skipped);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to load nuzlocke registry from database");
+        }
     }
 
     public async Task<string> CreateNuzlockeAsync(string basePath, int generation, string lockeType)
@@ -68,8 +136,9 @@ public class NuzlockeFileManager : INuzlockeFileManager
 
         await WriteJsonAsync(Path.Combine(nuzlockePath, GameStateFileName), initialState);
 
-        // Cache the path
+        // Cache the path and persist to SQLite
         _pathCache[nuzlockeId] = nuzlockePath;
+        await _registry.RegisterAsync(nuzlockeId, nuzlockePath);
 
         _logger.LogInformation("Created nuzlocke {NuzlockeId} at {Path}", nuzlockeId, nuzlockePath);
         return nuzlockeId;
@@ -77,7 +146,7 @@ public class NuzlockeFileManager : INuzlockeFileManager
 
     public async Task<NuzlockeState> LoadGameStateAsync(string nuzlockeId)
     {
-        var path = ResolvePath(nuzlockeId, GameStateFileName);
+        var path = await ResolvePathAsync(nuzlockeId, GameStateFileName);
         var sem = GetLock(nuzlockeId);
         await sem.WaitAsync();
         try
@@ -89,7 +158,7 @@ public class NuzlockeFileManager : INuzlockeFileManager
 
     public async Task SaveGameStateAsync(string nuzlockeId, NuzlockeState state)
     {
-        var path = ResolvePath(nuzlockeId, GameStateFileName);
+        var path = await ResolvePathAsync(nuzlockeId, GameStateFileName);
         var sem = GetLock(nuzlockeId);
         await sem.WaitAsync();
         try
@@ -102,7 +171,7 @@ public class NuzlockeFileManager : INuzlockeFileManager
 
     public async Task<BattleContext?> LoadBattleStateAsync(string nuzlockeId)
     {
-        var path = ResolvePath(nuzlockeId, BattleStateFileName);
+        var path = await ResolvePathAsync(nuzlockeId, BattleStateFileName);
         var sem = GetLock(nuzlockeId);
         await sem.WaitAsync();
         try
@@ -115,7 +184,7 @@ public class NuzlockeFileManager : INuzlockeFileManager
 
     public async Task SaveBattleStateAsync(string nuzlockeId, BattleContext battle)
     {
-        var path = ResolvePath(nuzlockeId, BattleStateFileName);
+        var path = await ResolvePathAsync(nuzlockeId, BattleStateFileName);
         var sem = GetLock(nuzlockeId);
         await sem.WaitAsync();
         try
@@ -125,20 +194,19 @@ public class NuzlockeFileManager : INuzlockeFileManager
         finally { sem.Release(); }
     }
 
-    public Task DeleteBattleStateAsync(string nuzlockeId)
+    public async Task DeleteBattleStateAsync(string nuzlockeId)
     {
-        var path = ResolvePath(nuzlockeId, BattleStateFileName);
+        var path = await ResolvePathAsync(nuzlockeId, BattleStateFileName);
         if (File.Exists(path))
         {
             File.Delete(path);
             _logger.LogInformation("Deleted battle state for {NuzlockeId}", nuzlockeId);
         }
-        return Task.CompletedTask;
     }
 
     public async Task SaveBattleRecordAsync(string nuzlockeId, BattleRecord record)
     {
-        var resultsDir = ResolvePath(nuzlockeId, ResultsDirName);
+        var resultsDir = await ResolvePathAsync(nuzlockeId, ResultsDirName);
         if (!Directory.Exists(resultsDir))
             Directory.CreateDirectory(resultsDir);
 
@@ -173,8 +241,9 @@ public class NuzlockeFileManager : INuzlockeFileManager
                 {
                     // Ensure basePath is populated
                     metadata.BasePath = basePath;
-                    // Cache the path for future operations
+                    // Cache the path and persist to SQLite
                     _pathCache[metadata.NuzlockeId] = dir;
+                    await _registry.RegisterAsync(metadata.NuzlockeId, dir);
                     result.Add(metadata);
                 }
             }
@@ -189,7 +258,7 @@ public class NuzlockeFileManager : INuzlockeFileManager
 
     public async Task<NuzlockeMetadata?> GetNuzlockeMetadataAsync(string nuzlockeId)
     {
-        var nuzlockePath = GetNuzlockePath(nuzlockeId);
+        var nuzlockePath = await GetNuzlockePathAsync(nuzlockeId);
         if (nuzlockePath == null) return null;
 
         var metadataPath = Path.Combine(nuzlockePath, MetadataFileName);
@@ -206,14 +275,31 @@ public class NuzlockeFileManager : INuzlockeFileManager
         return null;
     }
 
+    public async Task<string?> GetNuzlockePathAsync(string nuzlockeId)
+    {
+        // L1: in-memory cache
+        if (_pathCache.TryGetValue(nuzlockeId, out var cached))
+            return cached;
+
+        // L2: SQLite registry
+        var dbPath = await _registry.GetPathAsync(nuzlockeId);
+        if (dbPath != null && Directory.Exists(dbPath))
+        {
+            _pathCache[nuzlockeId] = dbPath;
+            return dbPath;
+        }
+
+        return null;
+    }
+
     // --- Private helpers ---
 
     private SemaphoreSlim GetLock(string nuzlockeId) =>
         _locks.GetOrAdd(nuzlockeId, _ => new SemaphoreSlim(1, 1));
 
-    private string ResolvePath(string nuzlockeId, string fileName)
+    private async Task<string> ResolvePathAsync(string nuzlockeId, string fileName)
     {
-        var basePath = GetNuzlockePath(nuzlockeId)
+        var basePath = await GetNuzlockePathAsync(nuzlockeId)
             ?? throw new KeyNotFoundException($"Nuzlocke not found: {nuzlockeId}. Use ListNuzlockesAsync or CreateNuzlockeAsync first.");
         return Path.Combine(basePath, fileName);
     }
@@ -240,5 +326,12 @@ public class NuzlockeFileManager : INuzlockeFileManager
             .Where(c => !invalidChars.Contains(c))
             .ToArray());
         return string.IsNullOrEmpty(sanitized) ? "unknown" : sanitized;
+    }
+
+    private static bool PathsAreEquivalent(string path1, string path2)
+    {
+        var normalized1 = Path.GetFullPath(path1).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var normalized2 = Path.GetFullPath(path2).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return string.Equals(normalized1, normalized2, StringComparison.OrdinalIgnoreCase);
     }
 }

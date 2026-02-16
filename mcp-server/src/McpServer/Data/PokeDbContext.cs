@@ -13,6 +13,7 @@ public class PokeDbContext : DbContext
     public DbSet<CachedType> CachedTypes { get; set; }
     public DbSet<CachedAbility> CachedAbilities { get; set; }
     public DbSet<CachedItem> CachedItems { get; set; }
+    public DbSet<NuzlockeRegistry> NuzlockeRegistries { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -57,6 +58,15 @@ public class PokeDbContext : DbContext
             entity.Property(e => e.JsonData).IsRequired();
             entity.Property(e => e.CachedAt).IsRequired();
         });
+
+        modelBuilder.Entity<NuzlockeRegistry>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.NuzlockeId).IsUnique();
+            entity.Property(e => e.NuzlockeId).IsRequired();
+            entity.Property(e => e.Path).IsRequired();
+            entity.Property(e => e.CreatedAt).IsRequired();
+        });
     }
 }
 
@@ -98,4 +108,12 @@ public class CachedItem
     public string NameOrId { get; set; } = string.Empty;
     public string JsonData { get; set; } = string.Empty;
     public DateTime CachedAt { get; set; }
+}
+
+public class NuzlockeRegistry
+{
+    public int Id { get; set; }
+    public string NuzlockeId { get; set; } = string.Empty;
+    public string Path { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
 }

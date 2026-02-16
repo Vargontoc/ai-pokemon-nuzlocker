@@ -49,7 +49,7 @@ public class PokeApiConnector : IPokeApiConnector
         }
 
         // take first N moves
-        subset.MovesBasicos = full.Moves.Take(movesLimit).Select(m => m.Move.Name).ToList();
+        subset.MovesBasicos = [.. full.Moves.Take(movesLimit).Select(m => m.Move.Name)];
 
         // Sprite not modeled in PokemonData currently; leave null
         subset.SpriteMin = null;

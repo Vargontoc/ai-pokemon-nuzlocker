@@ -15,6 +15,12 @@ namespace es.vargontoc.nuzlocke.ai.Services;
 public interface INuzlockeFileManager
 {
     /// <summary>
+    /// Carga el registry de nuzlockes desde SQLite al cache en memoria.
+    /// Debe llamarse al iniciar la aplicación.
+    /// </summary>
+    Task InitializeAsync();
+
+    /// <summary>
     /// Crea una nueva partida nuzlocke con su estructura de carpetas completa.
     /// </summary>
     /// <returns>NuzlockeId generado (GUID + fecha)</returns>
@@ -61,8 +67,14 @@ public interface INuzlockeFileManager
     Task<NuzlockeMetadata?> GetNuzlockeMetadataAsync(string nuzlockeId);
 
     /// <summary>
-    /// Resuelve la ruta completa de un nuzlockeId (basePath + nuzlockeId).
-    /// Devuelve null si el nuzlocke no está registrado.
+    /// Resuelve la ruta completa de un nuzlockeId desde cache en memoria.
+    /// Devuelve null si no está en cache.
     /// </summary>
     string? GetNuzlockePath(string nuzlockeId);
+
+    /// <summary>
+    /// Resuelve la ruta completa de un nuzlockeId.
+    /// Busca primero en cache L1 (memoria), luego en L2 (SQLite).
+    /// </summary>
+    Task<string?> GetNuzlockePathAsync(string nuzlockeId);
 }

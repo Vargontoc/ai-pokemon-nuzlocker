@@ -44,7 +44,7 @@ public class OllamaAiProvider : IAiProvider
         {
             // Combine system and user prompts for Ollama
             var combinedPrompt = $"{systemPrompt}\n\nUser: {userMessage}\n\nAssistant:";
-
+            _logger.LogInformation(combinedPrompt);
             var request = new
             {
                 model = _options.Model,
@@ -63,7 +63,7 @@ public class OllamaAiProvider : IAiProvider
                 "application/json");
 
             _logger.LogDebug("Sending request to Ollama: {BaseUrl}/api/generate", _options.BaseUrl);
-
+         
             // Use a dedicated timeout instead of the client's CancellationToken for Ollama calls.
             // The client token (HttpContext.RequestAborted) fires when curl/client disconnects,
             // which would cancel a slow-but-valid Ollama request prematurely.
@@ -78,13 +78,14 @@ public class OllamaAiProvider : IAiProvider
             response.EnsureSuccessStatusCode();
 
             var responseBody = await response.Content.ReadAsStringAsync(ollamaToken);
+            _logger.LogDebug($"Ollama response body: {responseBody}");
             var result = JsonSerializer.Deserialize<OllamaResponse>(responseBody, _jsonOptions);
 
             if (result?.Response == null)
             {
                 throw new InvalidOperationException("Ollama returned empty response");
             }
-
+            _logger.LogDebug($"Ollama response: {result.Response}");
             _logger.LogInformation("Ollama completion received: {Length} chars", result.Response.Length);
             return result.Response;
         }

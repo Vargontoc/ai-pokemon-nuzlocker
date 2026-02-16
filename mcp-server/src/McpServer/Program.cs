@@ -10,6 +10,7 @@ using es.vargontoc.nuzlocke.ai.Providers.Impl;
 using es.vargontoc.nuzlocke.ai.Models;
 using es.vargontoc.nuzlocke.ai.Workflows;
 using es.vargontoc.nuzlocke.ai.Workflows.Setup;
+using es.vargontoc.nuzlocke.ai.Workflows.Gameplay;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -59,11 +60,14 @@ builder.Services.AddScoped<IPokeApiConnector>(sp =>
 // Register Nuzlocke session manager (before StateManager, which depends on it)
 builder.Services.AddSingleton<INuzlockeSessionManager, NuzlockeSessionManager>();
 
+// Register Nuzlocke registry repository
+builder.Services.AddScoped<INuzlockeRegistryRepository, NuzlockeRegistryRepository>();
+
 // Register Nuzlocke file manager (per-nuzlocke folder structure)
-builder.Services.AddSingleton<INuzlockeFileManager, NuzlockeFileManager>();
+builder.Services.AddScoped<INuzlockeFileManager, NuzlockeFileManager>();
 
 // Register Nuzlocke state manager
-builder.Services.AddSingleton<IStateManager, StateManager>();
+builder.Services.AddScoped<IStateManager, StateManager>();
 
 // Register ToolExecutor
 builder.Services.AddScoped<ToolExecutor>();
@@ -161,8 +165,9 @@ builder.Services.AddScoped<NuzlockeAgent>();
 // Register Workflow System
 builder.Services.AddScoped<IWorkflowEngine, WorkflowEngine>();
 builder.Services.AddScoped<IWorkflow, InitNuzlockeWorkflow>();
+builder.Services.AddScoped<IWorkflow, CapturePokemonWorkflow>();
 // Future workflows:
-// builder.Services.AddScoped<IWorkflow, CapturePokemonWorkflow>();
+// builder.Services.AddScoped<IWorkflow, StartBattleWorkflow>();
 // etc.
 
 // Configure MCP Server
@@ -209,11 +214,14 @@ app.Use(async (context, next) =>
     }
 });
 
-// Apply migrations
+// Apply migrations and initialize nuzlocke registry
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<PokeDbContext>();
     db.Database.Migrate();
+
+    var fileManager = scope.ServiceProvider.GetRequiredService<INuzlockeFileManager>();
+    await fileManager.InitializeAsync();
 }
 
 

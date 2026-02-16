@@ -1,5 +1,8 @@
+using es.vargontoc.nuzlocke.ai.Data;
 using es.vargontoc.nuzlocke.ai.Models;
+using es.vargontoc.nuzlocke.ai.Repositories;
 using es.vargontoc.nuzlocke.ai.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Text.Json;
 using Xunit;
@@ -9,6 +12,7 @@ namespace es.vargontoc.nuzlocke.ai.Tests;
 public class NuzlockeFileManagerTests : IDisposable
 {
     private readonly NuzlockeFileManager _manager;
+    private readonly PokeDbContext _dbContext;
     private readonly string _testBasePath;
 
     private static readonly JsonSerializerOptions _readOptions = new()
@@ -20,11 +24,26 @@ public class NuzlockeFileManagerTests : IDisposable
     {
         _testBasePath = Path.Combine(Path.GetTempPath(), $"nuzlocke_test_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_testBasePath);
-        _manager = new NuzlockeFileManager(NullLogger<NuzlockeFileManager>.Instance);
+
+        _dbContext = CreateDbContext();
+        var registry = new NuzlockeRegistryRepository(_dbContext);
+        _manager = new NuzlockeFileManager(NullLogger<NuzlockeFileManager>.Instance, registry);
+    }
+
+    private static PokeDbContext CreateDbContext()
+    {
+        var options = new DbContextOptionsBuilder<PokeDbContext>()
+            .UseSqlite("Data Source=:memory:")
+            .Options;
+        var ctx = new PokeDbContext(options);
+        ctx.Database.OpenConnection();
+        ctx.Database.EnsureCreated();
+        return ctx;
     }
 
     public void Dispose()
     {
+        _dbContext.Dispose();
         if (Directory.Exists(_testBasePath))
             Directory.Delete(_testBasePath, recursive: true);
     }
@@ -96,8 +115,10 @@ public class NuzlockeFileManagerTests : IDisposable
         await _manager.CreateNuzlockeAsync(_testBasePath, 1, "standard");
         await _manager.CreateNuzlockeAsync(_testBasePath, 1, "hardcore");
 
-        // Create a fresh manager to ensure it discovers from disk
-        var freshManager = new NuzlockeFileManager(NullLogger<NuzlockeFileManager>.Instance);
+        // Create a fresh manager with a fresh DB to ensure it discovers from disk
+        using var freshDb = CreateDbContext();
+        var freshRegistry = new NuzlockeRegistryRepository(freshDb);
+        var freshManager = new NuzlockeFileManager(NullLogger<NuzlockeFileManager>.Instance, freshRegistry);
         var list = await freshManager.ListNuzlockesAsync(_testBasePath);
 
         Assert.Equal(2, list.Count);
@@ -236,5 +257,157 @@ public class NuzlockeFileManagerTests : IDisposable
     {
         var metadata = await _manager.GetNuzlockeMetadataAsync("nonexistent_2026-01-01");
         Assert.Null(metadata);
+    }
+
+    // --- Registry persistence (server restart via SQLite) ---
+
+    [Fact]
+    public async Task Registry_NewManagerFindsNuzlockeAfterRestart()
+    {
+        // Create a nuzlocke — persisted to both disk and SQLite
+        var nuzlockeId = await _manager.CreateNuzlockeAsync(_testBasePath, 1, "standard");
+        Assert.NotNull(_manager.GetNuzlockePath(nuzlockeId));
+
+        // Simulate server restart: new manager, SAME database (shared SQLite)
+        var freshRegistry = new NuzlockeRegistryRepository(_dbContext);
+        var freshManager = new NuzlockeFileManager(NullLogger<NuzlockeFileManager>.Instance, freshRegistry);
+        await freshManager.InitializeAsync();
+
+        // The fresh manager should find the nuzlocke via the SQLite registry
+        Assert.NotNull(freshManager.GetNuzlockePath(nuzlockeId));
+        var state = await freshManager.LoadGameStateAsync(nuzlockeId);
+        Assert.Equal(1, state.Generation);
+    }
+
+    [Fact]
+    public async Task Registry_NewManagerLoadsMetadataAfterRestart()
+    {
+        var nuzlockeId = await _manager.CreateNuzlockeAsync(_testBasePath, 1, "hardcore");
+
+        var freshRegistry = new NuzlockeRegistryRepository(_dbContext);
+        var freshManager = new NuzlockeFileManager(NullLogger<NuzlockeFileManager>.Instance, freshRegistry);
+        await freshManager.InitializeAsync();
+
+        var metadata = await freshManager.GetNuzlockeMetadataAsync(nuzlockeId);
+        Assert.NotNull(metadata);
+        Assert.Equal(nuzlockeId, metadata!.NuzlockeId);
+        Assert.Equal("hardcore", metadata.LockeType);
+    }
+
+    [Fact]
+    public async Task Registry_DeletedDirectoryNotLoadedOnRestart()
+    {
+        var nuzlockeId = await _manager.CreateNuzlockeAsync(_testBasePath, 1, "standard");
+
+        // Delete the nuzlocke directory to simulate manual removal
+        var nuzlockePath = _manager.GetNuzlockePath(nuzlockeId)!;
+        Directory.Delete(nuzlockePath, recursive: true);
+
+        // Fresh manager should skip the entry since the directory no longer exists
+        var freshRegistry = new NuzlockeRegistryRepository(_dbContext);
+        var freshManager = new NuzlockeFileManager(NullLogger<NuzlockeFileManager>.Instance, freshRegistry);
+        await freshManager.InitializeAsync();
+
+        Assert.Null(freshManager.GetNuzlockePath(nuzlockeId));
+    }
+
+    [Fact]
+    public async Task Registry_PersistsToSQLite()
+    {
+        var nuzlockeId = await _manager.CreateNuzlockeAsync(_testBasePath, 1, "standard");
+
+        // Verify the registry entry exists in SQLite directly
+        var dbEntry = await _dbContext.NuzlockeRegistries
+            .FirstOrDefaultAsync(r => r.NuzlockeId == nuzlockeId);
+        Assert.NotNull(dbEntry);
+        Assert.Contains(nuzlockeId, dbEntry!.Path);
+    }
+
+    // --- Metadata validation on InitializeAsync ---
+
+    [Fact]
+    public async Task Registry_TamperedMetadataId_SkippedOnRestart()
+    {
+        var nuzlockeId = await _manager.CreateNuzlockeAsync(_testBasePath, 1, "standard");
+        var nuzlockePath = _manager.GetNuzlockePath(nuzlockeId)!;
+
+        // Tamper: overwrite .nuzlocke with a different NuzlockeId
+        var tampered = new NuzlockeMetadata
+        {
+            NuzlockeId = "tampered_2026-01-01",
+            Generation = 1,
+            LockeType = "standard",
+            CreatedAt = DateTime.UtcNow,
+            BasePath = _testBasePath
+        };
+        await File.WriteAllTextAsync(
+            Path.Combine(nuzlockePath, ".nuzlocke"),
+            JsonSerializer.Serialize(tampered, _readOptions));
+
+        var freshRegistry = new NuzlockeRegistryRepository(_dbContext);
+        var freshManager = new NuzlockeFileManager(NullLogger<NuzlockeFileManager>.Instance, freshRegistry);
+        await freshManager.InitializeAsync();
+
+        Assert.Null(freshManager.GetNuzlockePath(nuzlockeId));
+    }
+
+    [Fact]
+    public async Task Registry_TamperedMetadataPath_SkippedOnRestart()
+    {
+        var nuzlockeId = await _manager.CreateNuzlockeAsync(_testBasePath, 1, "standard");
+        var nuzlockePath = _manager.GetNuzlockePath(nuzlockeId)!;
+
+        // Tamper: overwrite .nuzlocke with a different BasePath
+        var tampered = new NuzlockeMetadata
+        {
+            NuzlockeId = nuzlockeId,
+            Generation = 1,
+            LockeType = "standard",
+            CreatedAt = DateTime.UtcNow,
+            BasePath = "/some/other/path"
+        };
+        await File.WriteAllTextAsync(
+            Path.Combine(nuzlockePath, ".nuzlocke"),
+            JsonSerializer.Serialize(tampered, _readOptions));
+
+        var freshRegistry = new NuzlockeRegistryRepository(_dbContext);
+        var freshManager = new NuzlockeFileManager(NullLogger<NuzlockeFileManager>.Instance, freshRegistry);
+        await freshManager.InitializeAsync();
+
+        Assert.Null(freshManager.GetNuzlockePath(nuzlockeId));
+    }
+
+    [Fact]
+    public async Task Registry_MissingMetadataFile_SkippedOnRestart()
+    {
+        var nuzlockeId = await _manager.CreateNuzlockeAsync(_testBasePath, 1, "standard");
+        var nuzlockePath = _manager.GetNuzlockePath(nuzlockeId)!;
+
+        // Delete only the .nuzlocke metadata file (directory still exists)
+        File.Delete(Path.Combine(nuzlockePath, ".nuzlocke"));
+
+        var freshRegistry = new NuzlockeRegistryRepository(_dbContext);
+        var freshManager = new NuzlockeFileManager(NullLogger<NuzlockeFileManager>.Instance, freshRegistry);
+        await freshManager.InitializeAsync();
+
+        Assert.Null(freshManager.GetNuzlockePath(nuzlockeId));
+    }
+
+    [Fact]
+    public async Task Registry_ValidMetadata_LoadedOnRestart()
+    {
+        var nuzlockeId = await _manager.CreateNuzlockeAsync(_testBasePath, 1, "hardcore");
+
+        // Fresh manager with same DB — metadata should pass validation
+        var freshRegistry = new NuzlockeRegistryRepository(_dbContext);
+        var freshManager = new NuzlockeFileManager(NullLogger<NuzlockeFileManager>.Instance, freshRegistry);
+        await freshManager.InitializeAsync();
+
+        Assert.NotNull(freshManager.GetNuzlockePath(nuzlockeId));
+
+        var metadata = await freshManager.GetNuzlockeMetadataAsync(nuzlockeId);
+        Assert.NotNull(metadata);
+        Assert.Equal(nuzlockeId, metadata!.NuzlockeId);
+        Assert.Equal("hardcore", metadata.LockeType);
     }
 }
