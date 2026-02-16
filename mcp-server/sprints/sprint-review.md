@@ -1,52 +1,47 @@
-## Sprint Review [15-02-2026-Workflow-Capture-Pokemon]
+## Sprint Review [16-02-2026-Workflow-Route-Encounter]
 
 ### Objetivos
-- [x] Implementar workflow `capture_pokemon`
-    - [x] `Workflows/Gameplay/CapturePokemonWorkflow.cs`
-        - Input: `nuzlocke_id` (string), `species` (string), `nickname` (string), `location` (string), `level` (int)
-        - Validación: todos los parámetros requeridos, nuzlocke_id debe existir
-        - FetchData: obtener datos del pokemon via `IPokeApiConnector` (CachedPokeApiConnector: L1 memory → L2 SQLite → PokeAPI). Stats, tipos, movimientos iniciales
-        - MutateState:
-            - `RecordEncounterAsync(location, species, nickname)` — regla de 1 captura por ruta
-            - Si equipo < 6: `AddToTeamAsync(TeamMember)`
-            - Si equipo = 6: `MoveToPCAsync` automático (añadir al PC directamente)
-            - Guardar estado via `INuzlockeFileManager`
-        - GenerateAdvice: LLM analiza el capturado vs equipo actual (tipos, coberturas, debilidades)
-        - Result.Data: datos del pokemon capturado (stats, tipos), destino ("team" o "pc")
-    - [x] Adaptar `WorkflowBase` para que workflows de gameplay usen `nuzlocke_id` como sessionId
-        - El `nuzlocke_id` del request se usa para cargar/guardar estado via `INuzlockeFileManager` → `StateManager`
-    - [x] Tests: `CapturePokemonWorkflowTests.cs`
-        - [x] Validación: species, nickname, location, level, nuzlocke_id requeridos
-        - [x] FetchData: llama a `IPokeApiConnector.GetPokemonSubsetAsync(species)` (mock en tests)
-        - [x] MutateState: record_encounter + add_to_team cuando equipo < 6
-        - [x] MutateState: record_encounter + move_to_pc cuando equipo = 6
-        - [x] MutateState: falla si location ya tiene encounter (regla nuzlocke)
-        - [x] GenerateAdvice: prompt contiene equipo actual + datos del capturado
-        - [x] Result.Data contiene pokemon info y destino
-    - [x] Registrar `CapturePokemonWorkflow` en DI (`Program.cs`)
-    - [x] Actualizar `app/workflow.md` con documentación del nuevo workflow
+- [ ] Implementar workflow `route_encounter`
+    - [ ] `Workflows/Gameplay/RouteEncounterWorkflow.cs`
+        - Input: `nuzlocke_id` (string), `route_name` (string), `available_pokemon` (string[], lista de especies posibles en la ruta)
+        - Validación: nuzlocke_id y route_name requeridos, nuzlocke_id debe existir, ruta no debe tener encounter previo
+        - FetchData: obtener datos de todos los pokemon disponibles via `IPokeApiConnector.GetPokemonSubsetAsync` (tipos, stats, movimientos iniciales)
+        - MutateState: ninguna mutación — es un workflow de consulta pre-captura
+        - GenerateAdvice: LLM analiza qué pokemon conviene capturar considerando:
+            - Equipo actual (tipos, coberturas, debilidades)
+            - Pokemon disponibles en la ruta (tipos, stats comparativas)
+            - Huecos de cobertura que se podrían llenar
+            - Próximos gimnasios/rivales de la generación
+        - Result.Data: datos de cada pokemon disponible (stats, tipos), estado del equipo actual
+    - [ ] Tests: `RouteEncounterWorkflowTests.cs`
+        - [ ] Validación: nuzlocke_id, route_name requeridos
+        - [ ] Validación: falla si ruta ya tiene encounter registrado
+        - [ ] FetchData: llama a GetPokemonSubsetAsync para cada pokemon disponible
+        - [ ] MutateState: no aplica mutaciones
+        - [ ] GenerateAdvice: prompt contiene equipo actual + pokemon disponibles
+        - [ ] Result.Data contiene datos de pokemon disponibles
+    - [ ] Registrar `RouteEncounterWorkflow` en DI (`Program.cs`)
+    - [ ] Actualizar `app/workflow.md` con documentación del nuevo workflow
     - [ ] Tests manuales:
-        - [ ] `curl POST /nuzlocke/workflow` con `capture_pokemon` — captura exitosa (equipo vacío, va al team)
-        - [ ] `curl POST /nuzlocke/workflow` con `capture_pokemon` — captura con equipo lleno (va al PC)
-        - [ ] `curl POST /nuzlocke/workflow` con `capture_pokemon` — location duplicada (error regla nuzlocke)
+        - [ ] `curl POST /nuzlocke/workflow` con `route_encounter` — consulta exitosa con pokemon disponibles
+        - [ ] `curl POST /nuzlocke/workflow` con `route_encounter` — ruta ya usada (error)
 
 ### Aprobación Sprint review
-- [x] 143/143 tests passing (127 existentes + 16 nuevos)
+- [ ] Tests passing (172 existentes + nuevos)
 
 ### Riesgos
-- [x] `IPokeApiConnector.GetPokemonAsync` puede devolver null si la species no existe — manejado con error descriptivo "Pokemon not found: {species}"
-- [x] La regla de 1 captura por ruta depende de `RecordEncounterAsync` que ya valida duplicados — verificado: el error se propaga como excepción capturada en WorkflowResult
-- [x] El workflow necesita que `nuzlocke_id` esté en el path cache de `NuzlockeFileManager` — manejado: ExecuteAsync verifica y retorna error descriptivo si no se encuentra
+- [ ] Múltiples llamadas a PokeAPI en paralelo — considerar `Task.WhenAll` para eficiencia
+- [ ] Lista de `available_pokemon` vacía — manejar como caso válido con consejo genérico
+- [ ] Pokemon no encontrado en PokeAPI — manejar error individual sin fallar todo el workflow
 
 ### Fallos
-- Ninguno
+-
 
 ### Sugerencias para el próximo Sprint
+- [ ] **Workflow `item_obtained`**: Registro de objetos con consejo de uso
+- [ ] **Workflow `manage_moves`**: Gestión de movimientos con análisis
+- [ ] **Workflow `evolution`**: Evolución de pokemon con análisis de nuevas capacidades
+- [ ] **Workflow `next_battle`**: Preparación pre-batalla
 - [ ] **Workflow `start_battle`**: Inicio de batalla con análisis estratégico del oponente
 - [ ] **Workflow `next_turn`**: Turno de batalla con log y consejo táctico
 - [ ] **Workflow `end_battle`**: Cierre de batalla con BattleRecord + bajas
-- [ ] **Workflow `route_encounter`**: Consejo sobre qué capturar en una ruta
-- [ ] **Workflow `manage_moves`**: Gestión de movimientos con análisis
-- [ ] **Workflow `evolution`**: Evolución de pokemon con análisis de nuevas capacidades
-- [ ] **Workflow `item_obtained`**: Registro de objetos con consejo de uso
-- [ ] **Workflow `next_battle`**: Preparación pre-batalla

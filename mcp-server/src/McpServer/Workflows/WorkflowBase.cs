@@ -33,11 +33,17 @@ public abstract class WorkflowBase : IWorkflow
 
     public abstract IReadOnlyList<string> Validate(WorkflowParameters parameters);
 
-    public virtual async Task<WorkflowResult> ExecuteAsync(WorkflowRequest request, CancellationToken ct = default)
+    /// <summary>
+    /// Builds the workflow context: validates, loads state, creates the context object.
+    /// Returns null and sets the failure result on the out parameter when validation fails.
+    /// Override in subclasses that need custom context building (e.g., skip state loading, resolve nuzlocke_id).
+    /// </summary>
+    protected virtual async Task<(WorkflowContext? Context, WorkflowResult? FailureResult)> BuildContextAsync(
+        WorkflowRequest request, CancellationToken ct)
     {
         var errors = Validate(request.Parameters);
         if (errors.Count > 0)
-            return WorkflowResult.Failure(WorkflowId, errors.ToArray());
+            return (null, WorkflowResult.Failure(WorkflowId, errors.ToArray()));
 
         var state = await StateManager.GetStateAsync(request.SessionId);
         var battleContext = await StateManager.GetBattleContextAsync(request.SessionId);
@@ -52,6 +58,15 @@ public abstract class WorkflowBase : IWorkflow
             Language = request.Language
         };
 
+        return (context, null);
+    }
+
+    public virtual async Task<WorkflowResult> ExecuteAsync(WorkflowRequest request, CancellationToken ct = default)
+    {
+        var (context, failure) = await BuildContextAsync(request, ct);
+        if (context == null)
+            return failure!;
+
         try
         {
             await FetchDataAsync(context, ct);
@@ -64,6 +79,38 @@ public abstract class WorkflowBase : IWorkflow
             Logger.LogError(ex, "Workflow {WorkflowId} failed for session {SessionId}",
                 WorkflowId, request.SessionId);
             return WorkflowResult.Failure(WorkflowId, $"Workflow execution failed: {ex.Message}");
+        }
+    }
+
+    public virtual async Task<DeterministicResult> ExecuteDeterministicAsync(WorkflowRequest request, CancellationToken ct = default)
+    {
+        var (context, failure) = await BuildContextAsync(request, ct);
+        if (context == null)
+            return new DeterministicResult { Result = failure! };
+
+        try
+        {
+            await FetchDataAsync(context, ct);
+            await MutateStateAsync(context, ct);
+
+            var systemPrompt = GetSystemPrompt(context);
+            var userMessage = BuildUserMessage(context);
+
+            return new DeterministicResult
+            {
+                Result = context.Result,
+                SystemPrompt = systemPrompt,
+                UserMessage = userMessage
+            };
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Workflow {WorkflowId} deterministic execution failed for session {SessionId}",
+                WorkflowId, request.SessionId);
+            return new DeterministicResult
+            {
+                Result = WorkflowResult.Failure(WorkflowId, $"Workflow execution failed: {ex.Message}")
+            };
         }
     }
 

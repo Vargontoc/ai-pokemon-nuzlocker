@@ -8,6 +8,7 @@ using es.vargontoc.nuzlocke.ai.Services;
 using es.vargontoc.nuzlocke.ai.Providers;
 using es.vargontoc.nuzlocke.ai.Providers.Impl;
 using es.vargontoc.nuzlocke.ai.Models;
+using es.vargontoc.nuzlocke.ai.WebSockets;
 using es.vargontoc.nuzlocke.ai.Workflows;
 using es.vargontoc.nuzlocke.ai.Workflows.Setup;
 using es.vargontoc.nuzlocke.ai.Workflows.Gameplay;
@@ -162,6 +163,10 @@ builder.Services.AddScoped<PokeApiAgent>();
 // Register NuzlockeAgent so it can be injected into minimal API endpoints
 builder.Services.AddScoped<NuzlockeAgent>();
 
+// Register WebSocket services (singletons — manage cross-request connections)
+builder.Services.AddSingleton<IAdviceConnectionManager, AdviceConnectionManager>();
+builder.Services.AddSingleton<IAdviceDispatcher, AdviceBackgroundDispatcher>();
+
 // Register Workflow System
 builder.Services.AddScoped<IWorkflowEngine, WorkflowEngine>();
 builder.Services.AddScoped<IWorkflow, InitNuzlockeWorkflow>();
@@ -213,6 +218,9 @@ app.Use(async (context, next) =>
         throw;
     }
 });
+
+// Enable WebSocket support
+app.UseWebSockets();
 
 // Apply migrations and initialize nuzlocke registry
 using (var scope = app.Services.CreateScope())
@@ -332,6 +340,54 @@ app.MapPost("/nuzlocke/advice/stream", async (AdviceRequest request, NuzlockeAge
     }
 });
 
+// WebSocket endpoint for advice streaming
+app.Map("/ws/advice", async (HttpContext ctx, IAdviceConnectionManager connectionManager) =>
+{
+    if (!ctx.WebSockets.IsWebSocketRequest)
+    {
+        ctx.Response.StatusCode = 400;
+        await ctx.Response.WriteAsync("WebSocket connection required");
+        return;
+    }
+
+    var sessionId = ctx.Request.Query["sessionId"].ToString();
+    if (string.IsNullOrWhiteSpace(sessionId))
+    {
+        ctx.Response.StatusCode = 400;
+        await ctx.Response.WriteAsync("Missing required query parameter: sessionId");
+        return;
+    }
+
+    var logger = ctx.RequestServices.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation("WebSocket connection accepted for session {SessionId}", sessionId);
+
+    var webSocket = await ctx.WebSockets.AcceptWebSocketAsync();
+    connectionManager.AddConnection(sessionId, webSocket);
+
+    try
+    {
+        // Keep connection alive — read loop waits for client close
+        var buffer = new byte[1024];
+        while (webSocket.State == System.Net.WebSockets.WebSocketState.Open)
+        {
+            var receiveResult = await webSocket.ReceiveAsync(
+                new ArraySegment<byte>(buffer), CancellationToken.None);
+
+            if (receiveResult.MessageType == System.Net.WebSockets.WebSocketMessageType.Close)
+                break;
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "WebSocket error for session {SessionId}", sessionId);
+    }
+    finally
+    {
+        connectionManager.RemoveConnection(sessionId);
+        logger.LogInformation("WebSocket disconnected for session {SessionId}", sessionId);
+    }
+});
+
 // Workflow endpoints
 app.MapPost("/nuzlocke/workflow", async (WorkflowRequest request, IWorkflowEngine engine, CancellationToken ct) =>
 {
@@ -340,7 +396,7 @@ app.MapPost("/nuzlocke/workflow", async (WorkflowRequest request, IWorkflowEngin
         request.WorkflowId, request.SessionId);
     try
     {
-        var result = await engine.ExecuteAsync(request, ct);
+        var result = await engine.ExecuteWithAsyncAdviceAsync(request, ct);
         return result.Success ? Results.Ok(result) : Results.BadRequest(result);
     }
     catch (Exception ex)

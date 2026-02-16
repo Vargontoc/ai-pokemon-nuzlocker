@@ -2,6 +2,7 @@ using es.vargontoc.nuzlocke.ai.Connectors;
 using es.vargontoc.nuzlocke.ai.Models;
 using es.vargontoc.nuzlocke.ai.Providers;
 using es.vargontoc.nuzlocke.ai.Services;
+using es.vargontoc.nuzlocke.ai.WebSockets;
 using es.vargontoc.nuzlocke.ai.Workflows;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -12,11 +13,13 @@ namespace es.vargontoc.nuzlocke.ai.Tests.Workflows;
 public class WorkflowEngineTests
 {
     private readonly Mock<ILogger<WorkflowEngine>> _mockLogger = new();
+    private readonly Mock<IAdviceConnectionManager> _mockConnectionManager = new();
+    private readonly Mock<IAdviceDispatcher> _mockDispatcher = new();
 
     [Fact]
     public async Task Execute_UnknownWorkflow_ReturnsFailure()
     {
-        var engine = new WorkflowEngine(Array.Empty<IWorkflow>(), _mockLogger.Object);
+        var engine = new WorkflowEngine(Array.Empty<IWorkflow>(), _mockConnectionManager.Object, _mockDispatcher.Object, _mockLogger.Object);
 
         var result = await engine.ExecuteAsync(new WorkflowRequest
         {
@@ -36,7 +39,7 @@ public class WorkflowEngineTests
         mockWorkflow.Setup(w => w.ExecuteAsync(It.IsAny<WorkflowRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new WorkflowResult { WorkflowId = "test_workflow", Success = true });
 
-        var engine = new WorkflowEngine(new[] { mockWorkflow.Object }, _mockLogger.Object);
+        var engine = new WorkflowEngine(new[] { mockWorkflow.Object }, _mockConnectionManager.Object, _mockDispatcher.Object, _mockLogger.Object);
 
         var result = await engine.ExecuteAsync(new WorkflowRequest
         {
@@ -57,7 +60,7 @@ public class WorkflowEngineTests
         mockWorkflow.Setup(w => w.ExecuteAsync(It.IsAny<WorkflowRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new WorkflowResult { WorkflowId = "capture_pokemon", Success = true });
 
-        var engine = new WorkflowEngine(new[] { mockWorkflow.Object }, _mockLogger.Object);
+        var engine = new WorkflowEngine(new[] { mockWorkflow.Object }, _mockConnectionManager.Object, _mockDispatcher.Object, _mockLogger.Object);
 
         var result = await engine.ExecuteAsync(new WorkflowRequest
         {
@@ -76,7 +79,7 @@ public class WorkflowEngineTests
         var w2 = new Mock<IWorkflow>();
         w2.Setup(w => w.WorkflowId).Returns("workflow_b");
 
-        var engine = new WorkflowEngine(new[] { w1.Object, w2.Object }, _mockLogger.Object);
+        var engine = new WorkflowEngine(new[] { w1.Object, w2.Object }, _mockConnectionManager.Object, _mockDispatcher.Object, _mockLogger.Object);
 
         var available = engine.GetAvailableWorkflows();
         Assert.Equal(2, available.Count);
@@ -87,7 +90,7 @@ public class WorkflowEngineTests
     [Fact]
     public void GetAvailableWorkflows_EmptyWhenNoWorkflows()
     {
-        var engine = new WorkflowEngine(Array.Empty<IWorkflow>(), _mockLogger.Object);
+        var engine = new WorkflowEngine(Array.Empty<IWorkflow>(), _mockConnectionManager.Object, _mockDispatcher.Object, _mockLogger.Object);
         Assert.Empty(engine.GetAvailableWorkflows());
     }
 
@@ -104,7 +107,7 @@ public class WorkflowEngineTests
         w2.Setup(w => w.ExecuteAsync(It.IsAny<WorkflowRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new WorkflowResult { WorkflowId = "beta", Success = true, Advice = "Beta advice" });
 
-        var engine = new WorkflowEngine(new[] { w1.Object, w2.Object }, _mockLogger.Object);
+        var engine = new WorkflowEngine(new[] { w1.Object, w2.Object }, _mockConnectionManager.Object, _mockDispatcher.Object, _mockLogger.Object);
 
         var r1 = await engine.ExecuteAsync(new WorkflowRequest { WorkflowId = "alpha", SessionId = "s1" });
         var r2 = await engine.ExecuteAsync(new WorkflowRequest { WorkflowId = "beta", SessionId = "s1" });
@@ -113,6 +116,103 @@ public class WorkflowEngineTests
         Assert.Equal("Beta advice", r2.Advice);
         w1.Verify(w => w.ExecuteAsync(It.IsAny<WorkflowRequest>(), It.IsAny<CancellationToken>()), Times.Once);
         w2.Verify(w => w.ExecuteAsync(It.IsAny<WorkflowRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteWithAsyncAdvice_NoWebSocket_FallsBackToSync()
+    {
+        var mockWorkflow = new Mock<IWorkflow>();
+        mockWorkflow.Setup(w => w.WorkflowId).Returns("test_workflow");
+        mockWorkflow.Setup(w => w.ExecuteAsync(It.IsAny<WorkflowRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkflowResult { WorkflowId = "test_workflow", Success = true, Advice = "sync advice" });
+
+        _mockConnectionManager.Setup(c => c.HasConnection(It.IsAny<string>())).Returns(false);
+
+        var engine = new WorkflowEngine(new[] { mockWorkflow.Object }, _mockConnectionManager.Object, _mockDispatcher.Object, _mockLogger.Object);
+
+        var result = await engine.ExecuteWithAsyncAdviceAsync(new WorkflowRequest
+        {
+            WorkflowId = "test_workflow",
+            SessionId = "s1"
+        });
+
+        Assert.True(result.Success);
+        Assert.Equal("sync advice", result.Advice);
+        Assert.Null(result.CorrelationId);
+        mockWorkflow.Verify(w => w.ExecuteAsync(It.IsAny<WorkflowRequest>(), It.IsAny<CancellationToken>()), Times.Once);
+        mockWorkflow.Verify(w => w.ExecuteDeterministicAsync(It.IsAny<WorkflowRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ExecuteWithAsyncAdvice_WithWebSocket_DispatchesAdvice()
+    {
+        var mockWorkflow = new Mock<IWorkflow>();
+        mockWorkflow.Setup(w => w.WorkflowId).Returns("test_workflow");
+        mockWorkflow.Setup(w => w.ExecuteDeterministicAsync(It.IsAny<WorkflowRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DeterministicResult
+            {
+                Result = new WorkflowResult { WorkflowId = "test_workflow", Success = true },
+                SystemPrompt = "system prompt",
+                UserMessage = "user message"
+            });
+
+        _mockConnectionManager.Setup(c => c.HasConnection("s1")).Returns(true);
+
+        var engine = new WorkflowEngine(new[] { mockWorkflow.Object }, _mockConnectionManager.Object, _mockDispatcher.Object, _mockLogger.Object);
+
+        var result = await engine.ExecuteWithAsyncAdviceAsync(new WorkflowRequest
+        {
+            WorkflowId = "test_workflow",
+            SessionId = "s1"
+        });
+
+        Assert.True(result.Success);
+        Assert.Null(result.Advice); // Advice is async, not in HTTP response
+        Assert.NotNull(result.CorrelationId);
+        _mockDispatcher.Verify(d => d.Dispatch(It.Is<AdviceDispatchRequest>(r =>
+            r.SessionId == "s1" &&
+            r.SystemPrompt == "system prompt" &&
+            r.UserMessage == "user message")), Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteWithAsyncAdvice_UnknownWorkflow_ReturnsFailure()
+    {
+        var engine = new WorkflowEngine(Array.Empty<IWorkflow>(), _mockConnectionManager.Object, _mockDispatcher.Object, _mockLogger.Object);
+
+        var result = await engine.ExecuteWithAsyncAdviceAsync(new WorkflowRequest
+        {
+            WorkflowId = "nonexistent",
+            SessionId = "s1"
+        });
+
+        Assert.False(result.Success);
+        Assert.Contains("Unknown workflow", result.Errors[0]);
+    }
+
+    [Fact]
+    public async Task ExecuteWithAsyncAdvice_DeterministicFails_ReturnsFailureNoDispatch()
+    {
+        var mockWorkflow = new Mock<IWorkflow>();
+        mockWorkflow.Setup(w => w.WorkflowId).Returns("test_workflow");
+        mockWorkflow.Setup(w => w.ExecuteDeterministicAsync(It.IsAny<WorkflowRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DeterministicResult
+            {
+                Result = WorkflowResult.Failure("test_workflow", "Validation error")
+            });
+
+        _mockConnectionManager.Setup(c => c.HasConnection("s1")).Returns(true);
+
+        var engine = new WorkflowEngine(new[] { mockWorkflow.Object }, _mockConnectionManager.Object, _mockDispatcher.Object, _mockLogger.Object);
+
+        var result = await engine.ExecuteWithAsyncAdviceAsync(new WorkflowRequest
+        {
+            WorkflowId = "test_workflow",
+            SessionId = "s1"
+        });
+
+        Assert.False(result.Success);
+        _mockDispatcher.Verify(d => d.Dispatch(It.IsAny<AdviceDispatchRequest>()), Times.Never);
     }
 }
 

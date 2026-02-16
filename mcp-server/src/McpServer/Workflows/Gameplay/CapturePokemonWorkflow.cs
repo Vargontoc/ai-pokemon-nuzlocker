@@ -54,11 +54,12 @@ public class CapturePokemonWorkflow : WorkflowBase
     /// Override: uses nuzlocke_id as sessionId to load state from NuzlockeFileManager.
     /// Also ensures the nuzlocke_id is resolved in the file manager's path cache.
     /// </summary>
-    public override async Task<WorkflowResult> ExecuteAsync(WorkflowRequest request, CancellationToken ct = default)
+    protected override async Task<(WorkflowContext? Context, WorkflowResult? FailureResult)> BuildContextAsync(
+        WorkflowRequest request, CancellationToken ct)
     {
         var errors = Validate(request.Parameters);
         if (errors.Count > 0)
-            return WorkflowResult.Failure(WorkflowId, errors.ToArray());
+            return (null, WorkflowResult.Failure(WorkflowId, errors.ToArray()));
 
         var nuzlockeId = request.Parameters.GetString("nuzlocke_id")!;
 
@@ -66,7 +67,8 @@ public class CapturePokemonWorkflow : WorkflowBase
         var nuzlockePath = await _fileManager.GetNuzlockePathAsync(nuzlockeId);
         if (nuzlockePath == null)
         {
-            return WorkflowResult.Failure(WorkflowId, $"Nuzlocke not found: {nuzlockeId}. Ensure init_nuzlocke was called and the server has discovered this nuzlocke.");
+            return (null, WorkflowResult.Failure(WorkflowId,
+                $"Nuzlocke not found: {nuzlockeId}. Ensure init_nuzlocke was called and the server has discovered this nuzlocke."));
         }
 
         // Use nuzlocke_id as the sessionId so StateManager delegates to NuzlockeFileManager
@@ -83,18 +85,7 @@ public class CapturePokemonWorkflow : WorkflowBase
             Language = request.Language
         };
 
-        try
-        {
-            await FetchDataAsync(context, ct);
-            await MutateStateAsync(context, ct);
-            context.Result.Advice = await GenerateAdviceAsync(context, ct);
-            return context.Result;
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Workflow {WorkflowId} failed for nuzlocke {NuzlockeId}", WorkflowId, nuzlockeId);
-            return WorkflowResult.Failure(WorkflowId, $"Workflow execution failed: {ex.Message}");
-        }
+        return (context, null);
     }
 
     protected override async Task FetchDataAsync(WorkflowContext context, CancellationToken ct)

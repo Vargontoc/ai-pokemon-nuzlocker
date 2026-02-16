@@ -107,7 +107,7 @@ public class PokeApiConnector : IPokeApiConnector
                 PropertyNameCaseInsensitive = true
             };
 
-            var result = JsonSerializer.Deserialize<T>(content, options);
+            var result = JsonSerializer.Deserialize<T>(content!, options);
             _logger.LogInformation("Successfully fetched and deserialized {Type} from {Endpoint}",
                 typeof(T).Name, endpoint);
 

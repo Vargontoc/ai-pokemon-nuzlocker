@@ -49,11 +49,13 @@ public class InitNuzlockeWorkflow : WorkflowBase
     /// Override: init_nuzlocke is a creation workflow — no pre-existing state to load.
     /// Skips StateManager.GetStateAsync to avoid "session not found" errors.
     /// </summary>
-    public override async Task<WorkflowResult> ExecuteAsync(WorkflowRequest request, CancellationToken ct = default)
+    protected override Task<(WorkflowContext? Context, WorkflowResult? FailureResult)> BuildContextAsync(
+        WorkflowRequest request, CancellationToken ct)
     {
         var errors = Validate(request.Parameters);
         if (errors.Count > 0)
-            return WorkflowResult.Failure(WorkflowId, errors.ToArray());
+            return Task.FromResult<(WorkflowContext?, WorkflowResult?)>(
+                (null, WorkflowResult.Failure(WorkflowId, errors.ToArray())));
 
         var context = new WorkflowContext
         {
@@ -65,18 +67,7 @@ public class InitNuzlockeWorkflow : WorkflowBase
             Language = request.Language
         };
 
-        try
-        {
-            await FetchDataAsync(context, ct);
-            await MutateStateAsync(context, ct);
-            context.Result.Advice = await GenerateAdviceAsync(context, ct);
-            return context.Result;
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Workflow {WorkflowId} failed", WorkflowId);
-            return WorkflowResult.Failure(WorkflowId, $"Workflow execution failed: {ex.Message}");
-        }
+        return Task.FromResult<(WorkflowContext?, WorkflowResult?)>((context, null));
     }
 
     protected override Task FetchDataAsync(WorkflowContext context, CancellationToken ct)

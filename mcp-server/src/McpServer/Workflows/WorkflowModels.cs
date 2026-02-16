@@ -79,6 +79,12 @@ public class WorkflowResult
     public List<StateMutation> Mutations { get; set; } = new();
 
     /// <summary>
+    /// Correlation ID linking this HTTP response to the async WebSocket advice stream.
+    /// Null when advice was generated synchronously or skipped.
+    /// </summary>
+    public string? CorrelationId { get; set; }
+
+    /// <summary>
     /// LLM-generated strategic advice
     /// </summary>
     public string? Advice { get; set; }
@@ -108,6 +114,17 @@ public class StateMutation
 {
     public required string Type { get; set; }
     public required string Description { get; set; }
+}
+
+/// <summary>
+/// Result of executing only the deterministic part of a workflow (no LLM call).
+/// Contains the workflow result plus the prompts needed for async advice generation.
+/// </summary>
+public class DeterministicResult
+{
+    public required WorkflowResult Result { get; set; }
+    public string? SystemPrompt { get; set; }
+    public string? UserMessage { get; set; }
 }
 
 internal static class WorkflowJsonOptions

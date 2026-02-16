@@ -21,4 +21,10 @@ public interface IWorkflow
     /// Executes the workflow: deterministic state mutations first, then LLM analysis.
     /// </summary>
     Task<WorkflowResult> ExecuteAsync(WorkflowRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Executes only the deterministic part (Validate → FetchData → MutateState) without calling the LLM.
+    /// Returns the workflow result plus the system prompt and user message needed for async advice generation.
+    /// </summary>
+    Task<DeterministicResult> ExecuteDeterministicAsync(WorkflowRequest request, CancellationToken ct = default);
 }
