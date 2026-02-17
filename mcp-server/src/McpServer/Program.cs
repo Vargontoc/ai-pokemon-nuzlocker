@@ -171,9 +171,7 @@ builder.Services.AddSingleton<IAdviceDispatcher, AdviceBackgroundDispatcher>();
 builder.Services.AddScoped<IWorkflowEngine, WorkflowEngine>();
 builder.Services.AddScoped<IWorkflow, InitNuzlockeWorkflow>();
 builder.Services.AddScoped<IWorkflow, CapturePokemonWorkflow>();
-// Future workflows:
-// builder.Services.AddScoped<IWorkflow, StartBattleWorkflow>();
-// etc.
+builder.Services.AddScoped<IWorkflow, RouteEncounterWorkflow>();
 
 // Configure MCP Server
 builder.Services
