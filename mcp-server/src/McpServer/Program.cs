@@ -7,7 +7,6 @@ using es.vargontoc.nuzlocke.ai.Repositories;
 using es.vargontoc.nuzlocke.ai.Services;
 using es.vargontoc.nuzlocke.ai.Providers;
 using es.vargontoc.nuzlocke.ai.Providers.Impl;
-using es.vargontoc.nuzlocke.ai.Models;
 using es.vargontoc.nuzlocke.ai.WebSockets;
 using es.vargontoc.nuzlocke.ai.Workflows;
 using es.vargontoc.nuzlocke.ai.Workflows.Setup;
@@ -21,6 +20,24 @@ using ModelContextProtocol.Server;
 using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Add controllers
+builder.Services.AddControllers();
+
+// Configure CORS — restrict to web app origin
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+            ?? new[] { "http://localhost:3000" };
+
+        policy.WithOrigins(allowedOrigins)
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
+});
 
 // Configure options from appsettings
 builder.Services.Configure<PokeApiOptions>(
@@ -95,7 +112,6 @@ else if (aiProviderName == "claude")
 }
 else
 {
-    // If provider not configured, default to Ollama if base url present, otherwise throw
     var baseUrl = aiOptionsSection.GetValue<string>("BaseUrl");
     if (!string.IsNullOrEmpty(baseUrl))
     {
@@ -108,8 +124,7 @@ else
     }
 }
 
-// Configure Semantic Kernel with provider-specific setup (without plugins - they're scoped)
-// Register Kernel as scoped so plugins added at runtime can safely reference scoped services
+// Configure Semantic Kernel with provider-specific setup
 builder.Services.AddScoped<Kernel>(sp =>
 {
     var options = sp.GetRequiredService<IOptions<AiOptions>>().Value;
@@ -122,7 +137,6 @@ builder.Services.AddScoped<Kernel>(sp =>
 
     var kernelBuilder = Kernel.CreateBuilder();
 
-    // Add the appropriate chat completion service based on provider
     switch (options.Provider.ToLower())
     {
         case "ollama":
@@ -140,8 +154,6 @@ builder.Services.AddScoped<Kernel>(sp =>
             break;
 
         case "claude":
-            // NOTE: Semantic Kernel doesn't have native Claude support yet
-            // You would need to use Anthropic SDK directly or wait for SK support
             throw new NotImplementedException(
                 "Claude provider with Semantic Kernel is not yet implemented. " +
                 "Use OpenAI or Ollama for now.");
@@ -152,15 +164,11 @@ builder.Services.AddScoped<Kernel>(sp =>
                 $"Valid options are: Ollama, OpenAI");
     }
 
-    // Don't add plugins here - they need scoped services
-    // Plugins will be added in NuzlockeKernelAgent constructor
-
     return kernelBuilder.Build();
 });
 
-// Register Semantic Kernel agent (scoped to properly handle plugins)
+// Register agents
 builder.Services.AddScoped<PokeApiAgent>();
-// Register NuzlockeAgent so it can be injected into minimal API endpoints
 builder.Services.AddScoped<NuzlockeAgent>();
 
 // Register WebSocket services (singletons — manage cross-request connections)
@@ -197,7 +205,7 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
-// Global logging middleware to capture unhandled exceptions and response codes
+// Global logging middleware
 app.Use(async (context, next) =>
 {
     var logger = context.RequestServices.GetService<ILogger<Program>>();
@@ -217,6 +225,9 @@ app.Use(async (context, next) =>
     }
 });
 
+// Enable CORS (before routing)
+app.UseCors();
+
 // Enable WebSocket support
 app.UseWebSockets();
 
@@ -230,8 +241,8 @@ using (var scope = app.Services.CreateScope())
     await fileManager.InitializeAsync();
 }
 
-
-app.MapGet("/", () => "AI Pokemon Nuzlocker MCP Server");
+// Map controllers (Agent, Nuzlocke, Workflow, Session, Health)
+app.MapControllers();
 
 // Health check endpoints
 var healthCheckOptions = new HealthCheckOptions
@@ -263,82 +274,14 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 });
 app.MapHealthChecks("/health/live", new HealthCheckOptions
 {
-    Predicate = _ => false, // No checks, just confirms app is running
+    Predicate = _ => false,
     ResponseWriter = healthCheckOptions.ResponseWriter
 });
 
 // Map MCP endpoints
 app.MapMcp("/mcp");
 
-// AI Agent endpoint (powered by Semantic Kernel)
-app.MapPost("/agent/advice", async (AdviceRequest request, PokeApiAgent agent, CancellationToken ct) =>
-{
-    var logger = app.Services.GetRequiredService<ILogger<Program>>();
-    logger.LogInformation("POST /agent/advice received: {Question}", request.Question);
-    try
-    {
-        var advice = await agent.GetResponse(request.Question);
-        return Results.Ok(new { question = request.Question, advice });
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Error handling /agent/advice for question: {Question}", request.Question);
-        return Results.Problem(detail: ex.Message, statusCode: 500);
-    }
-});
-
-app.MapPost("/nuzlocke/advice", async (AdviceRequest request, NuzlockeAgent agent, CancellationToken ct) =>
-{
-    var logger = app.Services.GetRequiredService<ILogger<Program>>();
-    logger.LogInformation("POST /nuzlocke/advice received: {Question}, session={SessionId}", request.Question, request.SessionId);
-    try
-    {
-        var advice = await agent.GetAdviceAsync(request.Question, ct, request.SessionId);
-        return Results.Ok(new { question = request.Question, advice });
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Error handling /nuzlocke/advice for question: {Question}", request.Question);
-        return Results.Problem(detail: ex.Message, statusCode: 500);
-    }
-});
-
-// Streaming endpoint for nuzlocke advice (SSE)
-app.MapPost("/nuzlocke/advice/stream", async (AdviceRequest request, NuzlockeAgent agent, HttpContext ctx, CancellationToken ct) =>
-{
-    var logger = app.Services.GetRequiredService<ILogger<Program>>();
-    logger.LogInformation("POST /nuzlocke/advice/stream received: {Question}, session={SessionId}", request.Question, request.SessionId);
-
-    ctx.Response.Headers["Cache-Control"] = "no-cache";
-    ctx.Response.ContentType = "text/event-stream";
-
-    try
-    {
-        await foreach (var chunk in agent.StreamAdviceAsync(request.Question, ct, request.SessionId))
-        {
-            if (ct.IsCancellationRequested) break;
-            // Write SSE data field
-            await ctx.Response.WriteAsync($"data: {chunk.Replace("\n", "\\n")}\n\n");
-            await ctx.Response.Body.FlushAsync(ct);
-        }
-
-        // Close the stream
-        await ctx.Response.WriteAsync("event: end\ndata: [DONE]\n\n");
-        await ctx.Response.Body.FlushAsync(ct);
-        return Results.Ok();
-    }
-    catch (OperationCanceledException)
-    {
-        return Results.Problem(detail: "Client cancelled stream", statusCode: 499);
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Error while streaming advice");
-        return Results.Problem(detail: ex.Message, statusCode: 500);
-    }
-});
-
-// WebSocket endpoint for advice streaming
+// WebSocket endpoint for advice streaming (kept as minimal API — WebSocket lifecycle doesn't fit controllers)
 app.Map("/ws/advice", async (HttpContext ctx, IAdviceConnectionManager connectionManager) =>
 {
     if (!ctx.WebSockets.IsWebSocketRequest)
@@ -364,7 +307,6 @@ app.Map("/ws/advice", async (HttpContext ctx, IAdviceConnectionManager connectio
 
     try
     {
-        // Keep connection alive — read loop waits for client close
         var buffer = new byte[1024];
         while (webSocket.State == System.Net.WebSockets.WebSocketState.Open)
         {
@@ -386,87 +328,7 @@ app.Map("/ws/advice", async (HttpContext ctx, IAdviceConnectionManager connectio
     }
 });
 
-// Workflow endpoints
-app.MapPost("/nuzlocke/workflow", async (WorkflowRequest request, IWorkflowEngine engine, CancellationToken ct) =>
-{
-    var logger = app.Services.GetRequiredService<ILogger<Program>>();
-    logger.LogInformation("POST /nuzlocke/workflow: {WorkflowId}, session={SessionId}",
-        request.WorkflowId, request.SessionId);
-    try
-    {
-        var result = await engine.ExecuteWithAsyncAdviceAsync(request, ct);
-        return result.Success ? Results.Ok(result) : Results.BadRequest(result);
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Error executing workflow {WorkflowId}", request.WorkflowId);
-        return Results.Problem(detail: ex.Message, statusCode: 500);
-    }
-});
-
-app.MapGet("/nuzlocke/workflows", (IWorkflowEngine engine) =>
-    Results.Ok(new { workflows = engine.GetAvailableWorkflows() }));
-
-// Nuzlocke session management endpoints
-app.MapPost("/nuzlocke/sessions", async (CreateSessionRequest req, INuzlockeSessionManager sessions) =>
-{
-    try
-    {
-        var info = await sessions.CreateSessionAsync(req.Name, req.DirectoryPath);
-        return Results.Created($"/nuzlocke/sessions/{info.Id}", info);
-    }
-    catch (Exception ex)
-    {
-        return Results.Problem(detail: ex.Message, statusCode: 400);
-    }
-});
-
-app.MapGet("/nuzlocke/sessions", async (INuzlockeSessionManager sessions) =>
-    Results.Ok(await sessions.ListSessionsAsync()));
-
-app.MapGet("/nuzlocke/sessions/{id}", async (string id, INuzlockeSessionManager sessions) =>
-{
-    var s = await sessions.GetSessionAsync(id);
-    return s == null ? Results.NotFound() : Results.Ok(s);
-});
-
-app.MapDelete("/nuzlocke/sessions/{id}", async (string id, INuzlockeSessionManager sessions) =>
-{
-    var ok = await sessions.DeleteSessionAsync(id);
-    return ok ? Results.NoContent() : Results.NotFound();
-});
-
-app.MapGet("/nuzlocke/sessions/{id}/data", async (string id, INuzlockeSessionManager sessions) =>
-{
-    try
-    {
-        var data = await sessions.LoadSessionDataAsync(id);
-        return Results.Ok(data);
-    }
-    catch (KeyNotFoundException)
-    {
-        return Results.NotFound();
-    }
-});
-
-app.MapPost("/nuzlocke/sessions/{id}/data", async (string id, NuzlockeFileData fileData, INuzlockeSessionManager sessions) =>
-{
-    try
-    {
-        await sessions.SaveSessionDataAsync(id, fileData);
-        return Results.NoContent();
-    }
-    catch (KeyNotFoundException)
-    {
-        return Results.NotFound();
-    }
-});
-
 app.Run();
-
-// Request DTOs
-record AdviceRequest(string Question, string? SessionId = null);
-record CreateSessionRequest(string Name, string DirectoryPath);
 
 // Partial Program class to support WebApplicationFactory in integration tests
 namespace es.vargontoc.nuzlocke.ai

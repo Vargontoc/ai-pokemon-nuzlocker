@@ -1,0 +1,71 @@
+using es.vargontoc.nuzlocke.ai.Agents;
+using es.vargontoc.nuzlocke.ai.Models;
+using Microsoft.AspNetCore.Mvc;
+
+namespace es.vargontoc.nuzlocke.ai.Controllers;
+
+[ApiController]
+[Route("nuzlocke")]
+public class NuzlockeController : ControllerBase
+{
+    private readonly ILogger<NuzlockeController> _logger;
+
+    public NuzlockeController(ILogger<NuzlockeController> logger)
+    {
+        _logger = logger;
+    }
+
+    [HttpPost("advice")]
+    public async Task<IActionResult> GetAdvice(
+        [FromBody] AdviceRequest request,
+        [FromServices] NuzlockeAgent agent,
+        CancellationToken ct)
+    {
+        _logger.LogInformation("POST /nuzlocke/advice received: {Question}, session={SessionId}",
+            request.Question, request.SessionId);
+        try
+        {
+            var advice = await agent.GetAdviceAsync(request.Question, ct, request.SessionId);
+            return Ok(new { question = request.Question, advice });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error handling /nuzlocke/advice for question: {Question}", request.Question);
+            return Problem(detail: ex.Message, statusCode: 500);
+        }
+    }
+
+    [HttpPost("advice/stream")]
+    public async Task StreamAdvice(
+        [FromBody] AdviceRequest request,
+        [FromServices] NuzlockeAgent agent,
+        CancellationToken ct)
+    {
+        _logger.LogInformation("POST /nuzlocke/advice/stream received: {Question}, session={SessionId}",
+            request.Question, request.SessionId);
+
+        Response.Headers["Cache-Control"] = "no-cache";
+        Response.ContentType = "text/event-stream";
+
+        try
+        {
+            await foreach (var chunk in agent.StreamAdviceAsync(request.Question, ct, request.SessionId))
+            {
+                if (ct.IsCancellationRequested) break;
+                await Response.WriteAsync($"data: {chunk.Replace("\n", "\\n")}\n\n");
+                await Response.Body.FlushAsync(ct);
+            }
+
+            await Response.WriteAsync("event: end\ndata: [DONE]\n\n");
+            await Response.Body.FlushAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // Client cancelled — no response needed
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error while streaming advice");
+        }
+    }
+}

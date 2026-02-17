@@ -36,6 +36,12 @@
 -
 
 ### Sugerencias para el próximo Sprint
+- [ ] **Agent Workflow Bridge**: El nuzlocke agent detecta la intención del usuario y ejecuta workflows automáticamente. Ej. "Capturé un Weedle al nivel 10 en la Ruta 1 y lo llamé Gusanito"
+- [ ] **Stats calculate**: Al agregar un pokemon se le calculan los stats segun el nivel y tipo de crecimiento. El nivel minimo es 1 y el máximo 100 pero este puede aumentar haciendo que cambie la forma de calcular las estadisticas. Como es primera generación aun no se tiene en cuenta Naturaleza, EVs ni IVs.
+- [ ] **Conversation Memory**: Persistir historial de conversación en {nuzlocke}/memory/ para que el agente tenga contexto entre sesiones. Sería más relevante al recordar decisiones previas y tomadas por el jugador.
+- [ ] **Event System**: Emitir eventos cuando un workflow muta estado. (pokemon capturado, item obtenido, pokemon muerto, cambio de estado de un pokemon, subida de nivel de un pokemon, etc)
+- [ ] **Game State en Agent**: Inyectar automáticamente el estado actual del nuzlocke (equipo, pc, muertos, inventario) como contexto dek agente para que cualquier pregunta libre tenga contexto completo. 
+- [ ] **Workflow `level_up`**: Subida de nivel de un pokemon, no necesita comunicacion con el LLM
 - [ ] **Workflow `manage_moves`**: Gestión de movimientos con análisis
 - [ ] **Workflow `evolution`**: Evolución de pokemon con análisis de nuevas capacidades
 - [ ] **Workflow `next_battle`**: Preparación pre-batalla
