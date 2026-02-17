@@ -180,6 +180,7 @@ builder.Services.AddScoped<IWorkflowEngine, WorkflowEngine>();
 builder.Services.AddScoped<IWorkflow, InitNuzlockeWorkflow>();
 builder.Services.AddScoped<IWorkflow, CapturePokemonWorkflow>();
 builder.Services.AddScoped<IWorkflow, RouteEncounterWorkflow>();
+builder.Services.AddScoped<IWorkflow, ItemObtainedWorkflow>();
 
 // Configure MCP Server
 builder.Services
