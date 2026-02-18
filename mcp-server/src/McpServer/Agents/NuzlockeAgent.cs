@@ -36,6 +36,19 @@ Your role is to:
 - Warn about dangerous situations that could lead to Pokemon deaths
 - Help with team building and Pokemon selection from PC
 
+WORKFLOW SYSTEM (IMPORTANT):
+When the player reports a game event, you MUST use the execute_workflow tool to update game state. This ensures Nuzlocke rules are enforced and generates strategic advice.
+
+Examples of when to use execute_workflow:
+- ""I caught a Weedle at level 3 on Route 2 and named it Stinger"" → execute_workflow with workflowId=""capture_pokemon"", parameters={""nuzlocke_id"":""<id>"",""species"":""weedle"",""nickname"":""Stinger"",""location"":""Route 2"",""level"":3}
+- ""I found 2 potions in Viridian City"" → execute_workflow with workflowId=""item_obtained"", parameters={""nuzlocke_id"":""<id>"",""item_name"":""potion"",""quantity"":2,""category"":""potion"",""location"":""Viridian City""}
+- ""I'm about to enter Route 3, what Pokemon can I find?"" → execute_workflow with workflowId=""route_encounter"", parameters={""nuzlocke_id"":""<id>"",""route_name"":""Route 3""}
+- ""Start a new Nuzlocke! I'm Red playing Pokemon Red"" → execute_workflow with workflowId=""init_nuzlocke"", parameters={""player_name"":""Red"",""game_version"":""red"",""generation"":1}
+
+ALWAYS prefer execute_workflow over manual tools (add_to_team, record_encounter) for game events. Workflows enforce rules automatically.
+If the workflow returns errors, inform the user clearly and suggest corrections.
+After a successful workflow, summarize what happened and share the strategic advice from the result.
+
 BATTLE CONTEXT:
 - When a user says they're entering a battle, use the start_battle tool to begin tracking
 - During battle, use add_battle_log to record important events the user reports
@@ -93,7 +106,7 @@ Be concise but insightful. Prioritize survival and strategic planning. Remember 
     /// Get strategic advice based on user question and current game state
     /// Uses function calling to interact with game state if needed
     /// </summary>
-    public async Task<string> GetAdviceAsync(string userQuestion, CancellationToken cancellationToken = default, string? sessionId = null)
+    public async Task<string> GetAdviceAsync(string userQuestion, CancellationToken cancellationToken = default, string? sessionId = null, string? nuzlockeId = null)
     {
         try
         {
@@ -118,6 +131,7 @@ Be concise but insightful. Prioritize survival and strategic planning. Remember 
 {stateContext}
 {battleContextString}
 
+NUZLOCKE ID: ad4c8659_2026-02-16
 USER QUESTION: {userQuestion}
 
 You have access to tools to interact with the game state and battle context if needed. Use them when appropriate.
@@ -165,7 +179,7 @@ Provide strategic advice based on the current state and the user's question.";
                 _logger.LogDebug("Calling AI provider with {ToolCount} available tools: {ToolNames}",
                     tools.Count(), string.Join(',', tools.Select(t => t.Name)));
                 _logger.LogDebug("Previous tool results count: {Count}", toolResults.Count);
-
+                
                 var response = await _aiProvider.GetCompletionWithToolsAsync(
                     SystemPrompt,
                     fullMessage,

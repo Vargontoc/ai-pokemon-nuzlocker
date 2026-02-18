@@ -3,6 +3,7 @@ using es.vargontoc.nuzlocke.ai.Providers;
 using es.vargontoc.nuzlocke.ai.Services;
 using es.vargontoc.nuzlocke.ai.Connectors;
 using es.vargontoc.nuzlocke.ai.Agents;
+using es.vargontoc.nuzlocke.ai.Workflows;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
@@ -25,10 +26,12 @@ public class NuzlockeAgentFunctionCallingTests
 
         // Create mock for ToolExecutor
         var mockPokeApiConnector = new Mock<IPokeApiConnector>();
+        var mockWorkflowEngine = new Mock<IWorkflowEngine>();
         var mockToolExecutorLogger = new Mock<ILogger<ToolExecutor>>();
         _mockToolExecutor = new Mock<ToolExecutor>(
             _mockStateManager.Object,
             mockPokeApiConnector.Object,
+            mockWorkflowEngine.Object,
             mockToolExecutorLogger.Object);
 
         // Default setup for battle context (returns empty/no battle)

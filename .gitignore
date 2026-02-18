@@ -60,6 +60,7 @@ TestResults/
 
 # Ignore environment files
 .env
+node_modules
 
 session_state.json
 

@@ -1,6 +1,7 @@
 using es.vargontoc.nuzlocke.ai.Connectors;
 using es.vargontoc.nuzlocke.ai.Models;
 using es.vargontoc.nuzlocke.ai.Services;
+using es.vargontoc.nuzlocke.ai.Workflows;
 using Microsoft.Extensions.Logging;
 using Moq;
 using System.Text.Json;
@@ -12,6 +13,7 @@ public class ToolExecutorTests
 {
     private readonly Mock<IStateManager> _mockStateManager;
     private readonly Mock<IPokeApiConnector> _mockPokeApiConnector;
+    private readonly Mock<IWorkflowEngine> _mockWorkflowEngine;
     private readonly Mock<ILogger<ToolExecutor>> _mockLogger;
     private readonly ToolExecutor _executor;
 
@@ -19,8 +21,9 @@ public class ToolExecutorTests
     {
         _mockStateManager = new Mock<IStateManager>();
         _mockPokeApiConnector = new Mock<IPokeApiConnector>();
+        _mockWorkflowEngine = new Mock<IWorkflowEngine>();
         _mockLogger = new Mock<ILogger<ToolExecutor>>();
-        _executor = new ToolExecutor(_mockStateManager.Object, _mockPokeApiConnector.Object, _mockLogger.Object);
+        _executor = new ToolExecutor(_mockStateManager.Object, _mockPokeApiConnector.Object, _mockWorkflowEngine.Object, _mockLogger.Object);
     }
 
     [Fact]

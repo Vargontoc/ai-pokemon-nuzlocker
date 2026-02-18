@@ -1,5 +1,6 @@
 using es.vargontoc.nuzlocke.ai.Connectors;
 using es.vargontoc.nuzlocke.ai.Models;
+using es.vargontoc.nuzlocke.ai.Workflows;
 using System.Text.Json;
 
 namespace es.vargontoc.nuzlocke.ai.Services;
@@ -11,6 +12,7 @@ public class ToolExecutor
 {
     private readonly IStateManager _stateManager;
     private readonly IPokeApiConnector _pokeApiConnector;
+    private readonly IWorkflowEngine _workflowEngine;
     private readonly ILogger<ToolExecutor> _logger;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
@@ -22,10 +24,12 @@ public class ToolExecutor
     public ToolExecutor(
         IStateManager stateManager,
         IPokeApiConnector pokeApiConnector,
+        IWorkflowEngine workflowEngine,
         ILogger<ToolExecutor> logger)
     {
         _stateManager = stateManager;
         _pokeApiConnector = pokeApiConnector;
+        _workflowEngine = workflowEngine;
         _logger = logger;
     }
 
@@ -54,6 +58,7 @@ public class ToolExecutor
                 "get_type" => await ExecuteGetTypeAsync(toolCall),
                 "get_ability" => await ExecuteGetAbilityAsync(toolCall),
                 "get_item" => await ExecuteGetItemAsync(toolCall),
+                "execute_workflow" => await ExecuteWorkflowAsync(toolCall),
                 _ => throw new InvalidOperationException($"Unknown tool: {toolCall.Name}")
             };
 
@@ -472,6 +477,66 @@ public class ToolExecutor
                 ? JsonSerializer.Serialize(item, _jsonOptions)
                 : JsonSerializer.Serialize(new { error = $"Item '{args.NameOrId}' not found" }, _jsonOptions)
         };
+    }
+
+    private async Task<ToolCallResult> ExecuteWorkflowAsync(ToolCall toolCall)
+    {
+        var args = JsonSerializer.Deserialize<ExecuteWorkflowArgs>(toolCall.ArgumentsJson, _jsonOptions);
+        if (args == null || string.IsNullOrEmpty(args.WorkflowId))
+            throw new InvalidOperationException("Invalid arguments for execute_workflow: workflowId is required");
+
+        _logger.LogInformation("execute_workflow tool: {WorkflowId}, params={Params}",
+            args.WorkflowId, args.Parameters);
+
+        // Parse the parameters JSON string into WorkflowParameters
+        WorkflowParameters workflowParams;
+        try
+        {
+            var paramsJson = string.IsNullOrWhiteSpace(args.Parameters) ? "{}" : args.Parameters;
+            var dict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(paramsJson, _jsonOptions);
+            workflowParams = new WorkflowParameters(dict ?? new Dictionary<string, JsonElement>());
+        }
+        catch (JsonException ex)
+        {
+            return new ToolCallResult
+            {
+                ToolCallId = toolCall.Id,
+                ToolName = toolCall.Name,
+                Content = JsonSerializer.Serialize(new
+                {
+                    success = false,
+                    error = $"Invalid parameters JSON: {ex.Message}"
+                }, _jsonOptions)
+            };
+        }
+
+        // Build the WorkflowRequest — use sessionId if provided in the parameters
+        var sessionId = workflowParams.GetString("nuzlocke_id") ?? args.SessionId ?? "default";
+
+        var request = new WorkflowRequest
+        {
+            WorkflowId = args.WorkflowId,
+            SessionId = sessionId,
+            Parameters = workflowParams,
+            Language = args.Language ?? "en-US"
+        };
+
+        var result = await _workflowEngine.ExecuteAsync(request);
+
+        return new ToolCallResult
+        {
+            ToolCallId = toolCall.Id,
+            ToolName = toolCall.Name,
+            Content = JsonSerializer.Serialize(result, _jsonOptions)
+        };
+    }
+
+    private class ExecuteWorkflowArgs
+    {
+        public string WorkflowId { get; set; } = string.Empty;
+        public string? Parameters { get; set; }
+        public string? SessionId { get; set; }
+        public string? Language { get; set; }
     }
 
     private class StartBattleArgs

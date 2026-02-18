@@ -1,5 +1,6 @@
 using es.vargontoc.nuzlocke.ai.Agents;
 using es.vargontoc.nuzlocke.ai.Models;
+using es.vargontoc.nuzlocke.ai.WebSockets;
 using Microsoft.AspNetCore.Mvc;
 
 namespace es.vargontoc.nuzlocke.ai.Controllers;
@@ -16,23 +17,29 @@ public class NuzlockeController : ControllerBase
     }
 
     [HttpPost("advice")]
-    public async Task<IActionResult> GetAdvice(
+    public Task<IActionResult> GetAdvice(
         [FromBody] AdviceRequest request,
-        [FromServices] NuzlockeAgent agent,
-        CancellationToken ct)
+        [FromServices] IAdviceDispatcher dispatcher)
     {
         _logger.LogInformation("POST /nuzlocke/advice received: {Question}, session={SessionId}",
             request.Question, request.SessionId);
-        try
+
+        var sessionId = request.SessionId ?? "";
+        var correlationId = Guid.NewGuid().ToString("N");
+
+        _logger.LogInformation(
+            "Dispatching async agent advice for session {SessionId} with correlationId {CorrelationId}",
+            sessionId, correlationId);
+
+        dispatcher.DispatchAgentAdvice(new AgentAdviceDispatchRequest
         {
-            var advice = await agent.GetAdviceAsync(request.Question, ct, request.SessionId);
-            return Ok(new { question = request.Question, advice });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error handling /nuzlocke/advice for question: {Question}", request.Question);
-            return Problem(detail: ex.Message, statusCode: 500);
-        }
+            CorrelationId = correlationId,
+            SessionId = sessionId,
+            Question = request.Question
+        });
+
+        return Task.FromResult<IActionResult>(
+            Ok(new { question = request.Question, correlationId }));
     }
 
     [HttpPost("advice/stream")]

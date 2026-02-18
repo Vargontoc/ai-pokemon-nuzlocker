@@ -276,6 +276,8 @@ public class OllamaAiProvider : IAiProvider
     {
         public string? Role { get; set; }
         public string? Content { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("tool_calls")]
         public List<OllamaToolCall>? ToolCalls { get; set; }
     }
 

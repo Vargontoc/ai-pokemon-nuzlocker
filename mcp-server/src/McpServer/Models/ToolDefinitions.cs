@@ -298,6 +298,37 @@ public static class ToolDefinitions
         }
     };
 
+    public static readonly ToolDefinition ExecuteWorkflow = new()
+    {
+        Name = "execute_workflow",
+        Description = @"Execute a structured gameplay workflow to update the Nuzlocke state. Use this tool when the player reports a game event. Available workflows:
+
+- capture_pokemon: Player caught a Pokemon. Parameters: nuzlocke_id (string), species (string, lowercase e.g. 'weedle'), nickname (string), location (string), level (int)
+- item_obtained: Player obtained an item. Parameters: nuzlocke_id (string), item_name (string, lowercase e.g. 'potion'), category (string: 'pokeball','potion','battle','key','tm','other'), quantity (int, default 1), location (string, optional)
+- route_encounter: Consult which Pokemon to catch on a route. Parameters: nuzlocke_id (string), route_name (string), available_pokemon (string array, optional)
+- init_nuzlocke: Start a new Nuzlocke run. Parameters: player_name (string), game_version (string), generation (int, default 1)
+
+IMPORTANT: Always prefer this tool over manual tools (add_to_team, record_encounter) when the user describes a game event, because workflows enforce Nuzlocke rules and generate strategic advice.",
+        Parameters = new ToolParameters
+        {
+            Type = "object",
+            Properties = new Dictionary<string, ToolProperty>
+            {
+                ["workflowId"] = new ToolProperty
+                {
+                    Type = "string",
+                    Description = "The workflow to execute (e.g. 'capture_pokemon', 'item_obtained', 'route_encounter', 'init_nuzlocke')"
+                },
+                ["parameters"] = new ToolProperty
+                {
+                    Type = "string",
+                    Description = "JSON object with the workflow parameters (e.g. '{\"nuzlocke_id\":\"abc\",\"species\":\"pikachu\",\"nickname\":\"Sparky\",\"location\":\"Viridian Forest\",\"level\":5}')"
+                }
+            },
+            Required = new List<string> { "workflowId", "parameters" }
+        }
+    };
+
     public static IEnumerable<ToolDefinition> AllTools => new[]
     {
         GetGameState,
@@ -312,13 +343,15 @@ public static class ToolDefinitions
 
     /// <summary>
     /// Returns only the tools relevant to the current context.
+    /// Core tools: get_game_state, execute_workflow (handles all game events via workflows).
     /// PokeAPI info tools (get_pokemon, get_move, get_type) are always available.
     /// In battle: + battle tools (add_battle_log, end_battle)
-    /// Out of battle: + team management tools + start_battle
+    /// Out of battle: + start_battle only (all other actions go through execute_workflow)
     /// </summary>
     public static IEnumerable<ToolDefinition> GetContextualTools(bool inBattle)
     {
         yield return GetGameState;
+        yield return ExecuteWorkflow;
 
         // PokeAPI info tools — always available for strategic advice
         yield return GetPokemon;
@@ -332,10 +365,6 @@ public static class ToolDefinitions
         }
         else
         {
-            yield return AddToTeam;
-            yield return MarkAsDead;
-            yield return MoveToPC;
-            yield return RecordEncounter;
             yield return StartBattle;
         }
     }

@@ -34,3 +34,10 @@ public class AdviceDispatchRequest
     public required string SystemPrompt { get; set; }
     public required string UserMessage { get; set; }
 }
+
+public class AgentAdviceDispatchRequest
+{
+    public required string CorrelationId { get; set; }
+    public required string SessionId { get; set; }
+    public required string Question { get; set; }
+}

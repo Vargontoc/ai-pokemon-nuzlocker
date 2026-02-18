@@ -3,7 +3,9 @@ using es.vargontoc.nuzlocke.ai.Models;
 using es.vargontoc.nuzlocke.ai.Providers;
 using es.vargontoc.nuzlocke.ai.Connectors;
 using es.vargontoc.nuzlocke.ai.Services;
+using es.vargontoc.nuzlocke.ai.Workflows;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Xunit;
@@ -18,7 +20,7 @@ public class StreamingTests
         var fakeProvider = new FakeStreamingProvider(new[] { "hello", " ", "world" });
         var stateManager = new InMemoryStateManager();
         var pokeConnector = new FakePokeApiConnector();
-        var toolExecutor = new es.vargontoc.nuzlocke.ai.Services.ToolExecutor(stateManager, pokeConnector, NullLogger<es.vargontoc.nuzlocke.ai.Services.ToolExecutor>.Instance);
+        var toolExecutor = new es.vargontoc.nuzlocke.ai.Services.ToolExecutor(stateManager, pokeConnector, new Mock<IWorkflowEngine>().Object, NullLogger<es.vargontoc.nuzlocke.ai.Services.ToolExecutor>.Instance);
         var agent = new NuzlockeAgent(fakeProvider, stateManager, toolExecutor, NullLogger<NuzlockeAgent>.Instance);
 
         var results = new List<string>();
@@ -37,7 +39,7 @@ public class StreamingTests
         var fakeProvider = new FakeStreamingProvider(ProduceInfiniteAsync(cts.Token));
         var stateManager = new InMemoryStateManager();
         var pokeConnector = new FakePokeApiConnector();
-        var toolExecutor = new es.vargontoc.nuzlocke.ai.Services.ToolExecutor(stateManager, pokeConnector, NullLogger<es.vargontoc.nuzlocke.ai.Services.ToolExecutor>.Instance);
+        var toolExecutor = new es.vargontoc.nuzlocke.ai.Services.ToolExecutor(stateManager, pokeConnector, new Mock<IWorkflowEngine>().Object, NullLogger<es.vargontoc.nuzlocke.ai.Services.ToolExecutor>.Instance);
         var agent = new NuzlockeAgent(fakeProvider, stateManager, toolExecutor, NullLogger<NuzlockeAgent>.Instance);
 
         var enumerator = agent.StreamAdviceAsync("stream me").GetAsyncEnumerator(cts.Token);
