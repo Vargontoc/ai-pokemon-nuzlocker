@@ -1,6 +1,7 @@
 using System.Text;
 using es.vargontoc.nuzlocke.ai.Agents;
 using es.vargontoc.nuzlocke.ai.Providers;
+using es.vargontoc.nuzlocke.ai.Services;
 
 namespace es.vargontoc.nuzlocke.ai.WebSockets;
 
@@ -66,7 +67,30 @@ public class AdviceBackgroundDispatcher : IAdviceDispatcher
                 request.SessionId, request.CorrelationId);
             return;
         }
-        
+
+        // Validate that the nuzlocke session exists before proceeding
+        if (!string.IsNullOrEmpty(request.SessionId))
+        {
+            using var validationScope = _scopeFactory.CreateScope();
+            var fileManager = validationScope.ServiceProvider.GetRequiredService<INuzlockeFileManager>();
+            var nuzlockePath = await fileManager.GetNuzlockePathAsync(request.SessionId);
+
+            if (nuzlockePath == null)
+            {
+                _logger.LogWarning(
+                    "Nuzlocke not found for session {SessionId}, cancelling advice for correlation {CorrelationId}",
+                    request.SessionId, request.CorrelationId);
+
+                await _connectionManager.SendAsync(request.SessionId, new AdviceErrorMessage
+                {
+                    Type = "advice_error",
+                    CorrelationId = request.CorrelationId,
+                    Error = $"Nuzlocke not found: {request.SessionId}. Ensure init_nuzlocke was called first."
+                });
+                return;
+            }
+        }
+
         var startSent = await _connectionManager.SendAsync(request.SessionId, new AdviceStartMessage
         {
             Type = "advice_start",
@@ -85,7 +109,7 @@ public class AdviceBackgroundDispatcher : IAdviceDispatcher
             using var scope = _scopeFactory.CreateScope();
             var agent = scope.ServiceProvider.GetRequiredService<NuzlockeAgent>();
 
-            var advice = await agent.GetAdviceAsync(request.Question, CancellationToken.None, request.SessionId);
+            var advice = await agent.GetAdviceAsync(request.Question, CancellationToken.None, request.SessionId, request.Language);
 
             await _connectionManager.SendAsync(request.SessionId, new AdviceEndMessage
             {

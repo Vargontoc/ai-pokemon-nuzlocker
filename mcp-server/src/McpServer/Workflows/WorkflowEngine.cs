@@ -60,6 +60,8 @@ public class WorkflowEngine : IWorkflowEngine
         _logger.LogInformation("Workflow {WorkflowId} completed in {Ms:F0}ms. Success={Success}",
             request.WorkflowId, sw.Elapsed.TotalMilliseconds, result.Success);
 
+        await EmitWorkflowEventAsync(request.SessionId, result);
+
         return result;
     }
 
@@ -96,7 +98,10 @@ public class WorkflowEngine : IWorkflowEngine
             request.WorkflowId, sw.Elapsed.TotalMilliseconds, deterministicResult.Result.Success);
 
         if (!deterministicResult.Result.Success)
+        {
+            await EmitWorkflowEventAsync(sessionId, deterministicResult.Result);
             return deterministicResult.Result;
+        }
 
         // Generate correlationId and dispatch async advice
         if (!string.IsNullOrEmpty(deterministicResult.SystemPrompt) &&
@@ -119,7 +124,33 @@ public class WorkflowEngine : IWorkflowEngine
                 correlationId, sessionId);
         }
 
+        await EmitWorkflowEventAsync(sessionId, deterministicResult.Result);
+
         return deterministicResult.Result;
+    }
+
+    private async Task EmitWorkflowEventAsync(string sessionId, WorkflowResult result)
+    {
+        if (!_connectionManager.HasConnection(sessionId))
+            return;
+
+        var sent = await _connectionManager.SendAsync(sessionId, new WorkflowEventMessage
+        {
+            Type = "workflow_event",
+            CorrelationId = result.CorrelationId ?? Guid.NewGuid().ToString("N"),
+            WorkflowId = result.WorkflowId,
+            Success = result.Success,
+            Mutations = result.Mutations,
+            Data = result.Data,
+            Errors = result.Errors
+        });
+
+        if (sent)
+        {
+            _logger.LogInformation(
+                "Workflow event emitted for {WorkflowId} on session {SessionId} (success={Success}, mutations={MutationCount})",
+                result.WorkflowId, sessionId, result.Success, result.Mutations.Count);
+        }
     }
 
     public IReadOnlyList<string> GetAvailableWorkflows() =>

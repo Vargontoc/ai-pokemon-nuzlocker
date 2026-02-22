@@ -157,6 +157,8 @@ public class WorkflowEngineTests
             });
 
         _mockConnectionManager.Setup(c => c.HasConnection("s1")).Returns(true);
+        _mockConnectionManager.Setup(c => c.SendAsync("s1", It.IsAny<AdviceWebSocketMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         var engine = new WorkflowEngine(new[] { mockWorkflow.Object }, _mockConnectionManager.Object, _mockDispatcher.Object, _mockLogger.Object);
 
@@ -202,6 +204,8 @@ public class WorkflowEngineTests
             });
 
         _mockConnectionManager.Setup(c => c.HasConnection("s1")).Returns(true);
+        _mockConnectionManager.Setup(c => c.SendAsync("s1", It.IsAny<AdviceWebSocketMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         var engine = new WorkflowEngine(new[] { mockWorkflow.Object }, _mockConnectionManager.Object, _mockDispatcher.Object, _mockLogger.Object);
 
@@ -213,6 +217,194 @@ public class WorkflowEngineTests
 
         Assert.False(result.Success);
         _mockDispatcher.Verify(d => d.Dispatch(It.IsAny<AdviceDispatchRequest>()), Times.Never);
+
+        // Should still emit workflow_event for the failure
+        _mockConnectionManager.Verify(c => c.SendAsync("s1",
+            It.Is<WorkflowEventMessage>(m => m.Type == "workflow_event" && !m.Success),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    // --- Event emission tests ---
+
+    [Fact]
+    public async Task ExecuteAsync_WithWebSocket_EmitsWorkflowEvent()
+    {
+        var mockWorkflow = new Mock<IWorkflow>();
+        mockWorkflow.Setup(w => w.WorkflowId).Returns("test_workflow");
+        mockWorkflow.Setup(w => w.ExecuteAsync(It.IsAny<WorkflowRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkflowResult
+            {
+                WorkflowId = "test_workflow",
+                Success = true,
+                Mutations = new List<StateMutation>
+                {
+                    new() { Type = "added_to_team", Description = "Sparky added to team" }
+                }
+            });
+
+        _mockConnectionManager.Setup(c => c.HasConnection("s1")).Returns(true);
+        _mockConnectionManager.Setup(c => c.SendAsync("s1", It.IsAny<AdviceWebSocketMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var engine = new WorkflowEngine(new[] { mockWorkflow.Object }, _mockConnectionManager.Object, _mockDispatcher.Object, _mockLogger.Object);
+
+        var result = await engine.ExecuteAsync(new WorkflowRequest
+        {
+            WorkflowId = "test_workflow",
+            SessionId = "s1"
+        });
+
+        Assert.True(result.Success);
+        _mockConnectionManager.Verify(c => c.SendAsync("s1",
+            It.Is<WorkflowEventMessage>(m =>
+                m.Type == "workflow_event" &&
+                m.WorkflowId == "test_workflow" &&
+                m.Success &&
+                m.Mutations.Count == 1),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_NoWebSocket_DoesNotEmitEvent()
+    {
+        var mockWorkflow = new Mock<IWorkflow>();
+        mockWorkflow.Setup(w => w.WorkflowId).Returns("test_workflow");
+        mockWorkflow.Setup(w => w.ExecuteAsync(It.IsAny<WorkflowRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkflowResult { WorkflowId = "test_workflow", Success = true });
+
+        _mockConnectionManager.Setup(c => c.HasConnection(It.IsAny<string>())).Returns(false);
+
+        var engine = new WorkflowEngine(new[] { mockWorkflow.Object }, _mockConnectionManager.Object, _mockDispatcher.Object, _mockLogger.Object);
+
+        await engine.ExecuteAsync(new WorkflowRequest
+        {
+            WorkflowId = "test_workflow",
+            SessionId = "s1"
+        });
+
+        _mockConnectionManager.Verify(
+            c => c.SendAsync(It.IsAny<string>(), It.IsAny<AdviceWebSocketMessage>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WorkflowFails_EmitsErrorEvent()
+    {
+        var mockWorkflow = new Mock<IWorkflow>();
+        mockWorkflow.Setup(w => w.WorkflowId).Returns("test_workflow");
+        mockWorkflow.Setup(w => w.ExecuteAsync(It.IsAny<WorkflowRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(WorkflowResult.Failure("test_workflow", "Something went wrong"));
+
+        _mockConnectionManager.Setup(c => c.HasConnection("s1")).Returns(true);
+        _mockConnectionManager.Setup(c => c.SendAsync("s1", It.IsAny<AdviceWebSocketMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var engine = new WorkflowEngine(new[] { mockWorkflow.Object }, _mockConnectionManager.Object, _mockDispatcher.Object, _mockLogger.Object);
+
+        var result = await engine.ExecuteAsync(new WorkflowRequest
+        {
+            WorkflowId = "test_workflow",
+            SessionId = "s1"
+        });
+
+        Assert.False(result.Success);
+        _mockConnectionManager.Verify(c => c.SendAsync("s1",
+            It.Is<WorkflowEventMessage>(m =>
+                m.Type == "workflow_event" &&
+                !m.Success &&
+                m.Errors.Contains("Something went wrong")),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task ExecuteWithAsyncAdvice_Success_EmitsEventAndDispatchesAdvice()
+    {
+        var mockWorkflow = new Mock<IWorkflow>();
+        mockWorkflow.Setup(w => w.WorkflowId).Returns("test_workflow");
+        mockWorkflow.Setup(w => w.ExecuteDeterministicAsync(It.IsAny<WorkflowRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DeterministicResult
+            {
+                Result = new WorkflowResult
+                {
+                    WorkflowId = "test_workflow",
+                    Success = true,
+                    Mutations = new List<StateMutation>
+                    {
+                        new() { Type = "captured", Description = "Caught Pikachu" }
+                    }
+                },
+                SystemPrompt = "system",
+                UserMessage = "user"
+            });
+
+        _mockConnectionManager.Setup(c => c.HasConnection("s1")).Returns(true);
+        _mockConnectionManager.Setup(c => c.SendAsync("s1", It.IsAny<AdviceWebSocketMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var engine = new WorkflowEngine(new[] { mockWorkflow.Object }, _mockConnectionManager.Object, _mockDispatcher.Object, _mockLogger.Object);
+
+        await engine.ExecuteWithAsyncAdviceAsync(new WorkflowRequest
+        {
+            WorkflowId = "test_workflow",
+            SessionId = "s1"
+        });
+
+        // Both event and advice dispatch should happen
+        _mockConnectionManager.Verify(c => c.SendAsync("s1",
+            It.Is<WorkflowEventMessage>(m => m.Type == "workflow_event" && m.Success),
+            It.IsAny<CancellationToken>()), Times.Once);
+        _mockDispatcher.Verify(d => d.Dispatch(It.IsAny<AdviceDispatchRequest>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task EmitWorkflowEvent_SendFails_DoesNotThrow()
+    {
+        var mockWorkflow = new Mock<IWorkflow>();
+        mockWorkflow.Setup(w => w.WorkflowId).Returns("test_workflow");
+        mockWorkflow.Setup(w => w.ExecuteAsync(It.IsAny<WorkflowRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkflowResult { WorkflowId = "test_workflow", Success = true });
+
+        _mockConnectionManager.Setup(c => c.HasConnection("s1")).Returns(true);
+        _mockConnectionManager.Setup(c => c.SendAsync("s1", It.IsAny<AdviceWebSocketMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false); // Send fails
+
+        var engine = new WorkflowEngine(new[] { mockWorkflow.Object }, _mockConnectionManager.Object, _mockDispatcher.Object, _mockLogger.Object);
+
+        // Should not throw even though SendAsync returns false
+        var result = await engine.ExecuteAsync(new WorkflowRequest
+        {
+            WorkflowId = "test_workflow",
+            SessionId = "s1"
+        });
+
+        Assert.True(result.Success);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_NoCorrelationId_GeneratesOneForEvent()
+    {
+        var mockWorkflow = new Mock<IWorkflow>();
+        mockWorkflow.Setup(w => w.WorkflowId).Returns("test_workflow");
+        mockWorkflow.Setup(w => w.ExecuteAsync(It.IsAny<WorkflowRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkflowResult { WorkflowId = "test_workflow", Success = true });
+
+        _mockConnectionManager.Setup(c => c.HasConnection("s1")).Returns(true);
+        _mockConnectionManager.Setup(c => c.SendAsync("s1", It.IsAny<AdviceWebSocketMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var engine = new WorkflowEngine(new[] { mockWorkflow.Object }, _mockConnectionManager.Object, _mockDispatcher.Object, _mockLogger.Object);
+
+        await engine.ExecuteAsync(new WorkflowRequest
+        {
+            WorkflowId = "test_workflow",
+            SessionId = "s1"
+        });
+
+        _mockConnectionManager.Verify(c => c.SendAsync("s1",
+            It.Is<WorkflowEventMessage>(m =>
+                m.Type == "workflow_event" &&
+                !string.IsNullOrEmpty(m.CorrelationId)),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 }
 

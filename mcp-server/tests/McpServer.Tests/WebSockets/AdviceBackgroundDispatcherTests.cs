@@ -29,7 +29,9 @@ public class AdviceBackgroundDispatcherTests
         return new AdviceBackgroundDispatcher(_mockConnectionManager.Object, scopeFactory, _mockLogger.Object);
     }
 
-    private AdviceBackgroundDispatcher CreateDispatcherWithAgent()
+    private readonly Mock<INuzlockeFileManager> _mockFileManager = new();
+
+    private AdviceBackgroundDispatcher CreateDispatcherWithAgent(string? nuzlockePathResult = "/fake/path")
     {
         var mockState = new Mock<IStateManager>();
         mockState.Setup(s => s.GetStateAsync(It.IsAny<string>()))
@@ -41,9 +43,13 @@ public class AdviceBackgroundDispatcherTests
         mockState.Setup(s => s.GetBattleContextAsync())
             .ReturnsAsync(new BattleContext());
 
+        _mockFileManager.Setup(f => f.GetNuzlockePathAsync(It.IsAny<string>()))
+            .ReturnsAsync(nuzlockePathResult);
+
         var services = new ServiceCollection();
         services.AddScoped<IAiProvider>(_ => _mockAiProvider.Object);
         services.AddScoped<IStateManager>(_ => mockState.Object);
+        services.AddScoped<INuzlockeFileManager>(_ => _mockFileManager.Object);
         services.AddScoped<IPokeApiConnector>(_ => new Mock<IPokeApiConnector>().Object);
         services.AddScoped<IWorkflowEngine>(_ => new Mock<IWorkflowEngine>().Object);
         services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
@@ -189,7 +195,8 @@ public class AdviceBackgroundDispatcherTests
         {
             CorrelationId = "corr_agent1",
             SessionId = "session1",
-            Question = "What Pokemon should I catch?"
+            Question = "What Pokemon should I catch?",
+            Language = "en-US"
         });
 
         await Task.Delay(200);
@@ -220,7 +227,8 @@ public class AdviceBackgroundDispatcherTests
         {
             CorrelationId = "corr_agent2",
             SessionId = "session1",
-            Question = "What Pokemon should I catch?"
+            Question = "What Pokemon should I catch?",
+            Language = "en-US"
         });
 
         await Task.Delay(500);
@@ -258,7 +266,8 @@ public class AdviceBackgroundDispatcherTests
         {
             CorrelationId = "corr_agent3",
             SessionId = "session1",
-            Question = "Help me!"
+            Question = "Help me!",
+            Language = "en-US"
         });
 
         await Task.Delay(500);
@@ -268,6 +277,40 @@ public class AdviceBackgroundDispatcherTests
                 It.Is<AdviceErrorMessage>(m => m.Type == "advice_error" && m.Error.Contains("Ollama connection refused")),
                 It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task DispatchAgentAdvice_NuzlockeNotFound_SendsAdviceErrorAndCancels()
+    {
+        _mockConnectionManager.Setup(c => c.HasConnection("invalid_session")).Returns(true);
+        _mockConnectionManager.Setup(c => c.SendAsync("invalid_session", It.IsAny<AdviceWebSocketMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        var dispatcher = CreateDispatcherWithAgent(nuzlockePathResult: null);
+
+        dispatcher.DispatchAgentAdvice(new AgentAdviceDispatchRequest
+        {
+            CorrelationId = "corr_notfound",
+            SessionId = "invalid_session",
+            Question = "What should I do?",
+            Language = "en-US"
+        });
+
+        await Task.Delay(500);
+
+        // Should send advice_error with nuzlocke not found message
+        _mockConnectionManager.Verify(
+            c => c.SendAsync("invalid_session",
+                It.Is<AdviceErrorMessage>(m => m.Type == "advice_error" && m.Error.Contains("Nuzlocke not found")),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        // Should NOT send advice_start (cancelled before reaching that point)
+        _mockConnectionManager.Verify(
+            c => c.SendAsync("invalid_session",
+                It.Is<AdviceStartMessage>(m => m.Type == "advice_start"),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     private static async IAsyncEnumerable<string> AsyncChunks(params string[] chunks)

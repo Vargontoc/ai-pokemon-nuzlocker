@@ -106,7 +106,7 @@ Be concise but insightful. Prioritize survival and strategic planning. Remember 
     /// Get strategic advice based on user question and current game state
     /// Uses function calling to interact with game state if needed
     /// </summary>
-    public async Task<string> GetAdviceAsync(string userQuestion, CancellationToken cancellationToken = default, string? sessionId = null, string? nuzlockeId = null)
+    public async Task<string> GetAdviceAsync(string userQuestion, CancellationToken cancellationToken = default, string? sessionId = null, string? nuzlockeId = null, string lng = "en-EN")
     {
         try
         {
@@ -131,11 +131,10 @@ Be concise but insightful. Prioritize survival and strategic planning. Remember 
 {stateContext}
 {battleContextString}
 
-NUZLOCKE ID: ad4c8659_2026-02-16
 USER QUESTION: {userQuestion}
-
+LANGUAGE RESPONSE: {lng}
 You have access to tools to interact with the game state and battle context if needed. Use them when appropriate.
-Provide strategic advice based on the current state and the user's question.";
+Provide strategic advice based on the current state and the user's question on language response.";
 
             // If we have a PokeApiAgent available and the question references Pokemon data,
             // prefetch auxiliary information from the PokeApiAgent and include it in the prompt.
@@ -286,7 +285,7 @@ Provide strategic advice based on the current state and the user's question.";
     /// Stream strategic advice from the underlying AI provider as it is generated.
     /// This method streams the provider's text output (no function-calling support in-stream).
     /// </summary>
-    public IAsyncEnumerable<string> StreamAdviceAsync(string userQuestion, CancellationToken cancellationToken = default, string? sessionId = null)
+    public IAsyncEnumerable<string> StreamAdviceAsync(string userQuestion, CancellationToken cancellationToken = default, string? sessionId = null, string? lng = "en-EN")
     {
         // Build prompt similarly to GetAdviceAsync but keep logic synchronous for streaming
         var stateTask = string.IsNullOrEmpty(sessionId)
@@ -294,10 +293,10 @@ Provide strategic advice based on the current state and the user's question.";
             : _stateManager.GetStateAsync(sessionId);
 
         // We'll start an async iterator that awaits the state then streams
-        return StreamAdviceInternalAsync(stateTask, userQuestion, sessionId, cancellationToken);
+        return StreamAdviceInternalAsync(stateTask, userQuestion, sessionId, lng, cancellationToken);
     }
 
-    private async IAsyncEnumerable<string> StreamAdviceInternalAsync(Task<Models.NuzlockeState> stateTask, string userQuestion, string? sessionId, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    private async IAsyncEnumerable<string> StreamAdviceInternalAsync(Task<Models.NuzlockeState> stateTask, string userQuestion, string? sessionId, string? lng = "en-EN", [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var state = await stateTask;
         var stateContext = BuildStateContext(state);
@@ -312,8 +311,8 @@ Provide strategic advice based on the current state and the user's question.";
 {battleContextString}
 
 USER QUESTION: {userQuestion}
-
-You have access to tools when appropriate. Provide strategic advice based on the current state and the user's question.";
+LANGUAGE RESPONSE: {lng}
+You have access to tools when appropriate. Provide strategic advice based on the current state and the user's question on language response";
 
         await foreach (var chunk in _aiProvider.StreamCompletionAsync(SystemPrompt, fullMessage, cancellationToken))
         {

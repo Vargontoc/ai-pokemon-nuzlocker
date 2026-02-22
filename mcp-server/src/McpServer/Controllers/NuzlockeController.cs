@@ -21,12 +21,12 @@ public class NuzlockeController : ControllerBase
         [FromBody] AdviceRequest request,
         [FromServices] IAdviceDispatcher dispatcher)
     {
-        _logger.LogInformation("POST /nuzlocke/advice received: {Question}, session={SessionId}",
-            request.Question, request.SessionId);
+        _logger.LogInformation("POST /nuzlocke/advice received: {Question}, session={SessionId}, language={Language}",
+            request.Question, request.SessionId, request.Language);
 
         var sessionId = request.SessionId ?? "";
         var correlationId = Guid.NewGuid().ToString("N");
-
+        var lng = request.Language ?? "en-EN";
         _logger.LogInformation(
             "Dispatching async agent advice for session {SessionId} with correlationId {CorrelationId}",
             sessionId, correlationId);
@@ -35,7 +35,8 @@ public class NuzlockeController : ControllerBase
         {
             CorrelationId = correlationId,
             SessionId = sessionId,
-            Question = request.Question
+            Question = request.Question,
+            Language = lng
         });
 
         return Task.FromResult<IActionResult>(
