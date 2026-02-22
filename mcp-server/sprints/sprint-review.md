@@ -1,21 +1,22 @@
 ## Sprint Review [22-02-2026-Game-State-Agent]
 
 ### Objetivos
-- [ ] Inyectar estado actual del nuzlocke como contexto del agente
-    - [ ] Leer `NuzlockeState` y `BattleContext` del sessionId en `NuzlockeAgent.GetAdviceAsync`
-    - [ ] Serializar el estado a texto legible para el LLM (equipo, pc, bajas, inventario, encuentros)
-    - [ ] Incluir el estado serializado en el system prompt o user message del agente
-    - [ ] Si el estado está vacío o no existe, indicarlo explícitamente al LLM (no ignorar)
-    - [ ] Tests unitarios:
-        - [ ] Con estado cargado el prompt incluye equipo y contexto de batalla
-        - [ ] Con estado vacío el prompt indica que no hay datos aún
-        - [ ] Con BattleContext activo el prompt refleja la batalla en curso
+- [x] Inyectar estado actual del nuzlocke como contexto del agente
+    - [x] Leer `NuzlockeState` y `BattleContext` del sessionId en `NuzlockeAgent.GetAdviceAsync`
+    - [x] Serializar el estado a texto legible para el LLM (equipo, pc, bajas, inventario, encuentros)
+    - [x] Incluir el estado serializado en el user message del agente
+    - [x] Serializar el estado en formato compacto de texto plano (no JSON): una línea por sección — `TEAM`, `PC`, `DEATHS`, `ITEMS`, `LOCATION`, `BATTLE`
+    - [x] Si el estado está vacío o no existe, indicarlo explícitamente al LLM (`none` / `unknown`)
+    - [x] Tests unitarios:
+        - [x] Con estado cargado el prompt incluye equipo, PC, deaths, items y location en formato compacto
+        - [x] Con estado vacío el prompt indica `none` para todas las secciones y `BATTLE: none`
+        - [x] Con BattleContext activo el prompt refleja la batalla en curso (oponente, tipo, turn, leading)
 
 ### Aprobación Sprint review
-- [ ] Tests passing
+- [x] Tests passing (223: 220 existentes + 3 state context)
 
 ### Riesgos
-- [ ] El estado serializado puede ser demasiado largo y consumir demasiado contexto del LLM
+- [x] El estado serializado puede ser demasiado largo y consumir demasiado contexto del LLM → **Mitigación**: formato compacto en texto plano (una línea por sección: TEAM, PC, DEATHS, ITEMS, LOCATION, BATTLE). Sin JSON, sin campos redundantes.
 
 ### Fallos
 - [ ]

@@ -322,97 +322,62 @@ You have access to tools when appropriate. Provide strategic advice based on the
 
     private string BuildStateContext(Models.NuzlockeState state)
     {
-        var context = new System.Text.StringBuilder();
+        var lines = new System.Text.StringBuilder();
 
-        // Team information
-        context.AppendLine($"TEAM ({state.Team.Count}/6):");
-        if (state.Team.Count == 0)
-        {
-            context.AppendLine("  - No Pokemon in team yet");
-        }
-        else
-        {
-            foreach (var pokemon in state.Team)
+        // TEAM — one line, compact
+        var teamEntries = state.Team.Count > 0
+            ? string.Join(", ", state.Team.Select(p =>
             {
-                var hpInfo = pokemon.MaxHP > 0
-                    ? $"HP: {pokemon.CurrentHP}/{pokemon.MaxHP}"
-                    : "HP: Unknown";
-                var moves = pokemon.Moves.Count > 0
-                    ? string.Join(", ", pokemon.Moves)
-                    : "no moves recorded";
-                context.AppendLine($"  - {pokemon.Nickname} ({pokemon.Species}, Lv.{pokemon.Level}) - {hpInfo} - Moves: {moves}");
-            }
-        }
+                var hp = p.MaxHP > 0 ? $" [HP:{p.CurrentHP}/{p.MaxHP}]" : string.Empty;
+                return $"{p.Nickname}/{p.Species} Lv{p.Level}{hp}";
+            }))
+            : "none";
+        lines.AppendLine($"TEAM ({state.Team.Count}/6): {teamEntries}");
 
-        // PC Storage
-        context.AppendLine($"\nPC STORAGE ({state.PCStorage.Count}):");
-        if (state.PCStorage.Count == 0)
-        {
-            context.AppendLine("  - Empty");
-        }
-        else
-        {
-            foreach (var pokemon in state.PCStorage)
-            {
-                context.AppendLine($"  - {pokemon.Nickname} ({pokemon.Species}, Lv.{pokemon.Level})");
-            }
-        }
+        // PC — one line
+        var pcEntries = state.PCStorage.Count > 0
+            ? string.Join(", ", state.PCStorage.Select(p => $"{p.Nickname}/{p.Species} Lv{p.Level}"))
+            : "none";
+        lines.AppendLine($"PC ({state.PCStorage.Count}): {pcEntries}");
 
-        // Deaths (Graveyard)
-        context.AppendLine($"\nDEATHS ({state.DeadPokemon.Count}):");
-        if (state.DeadPokemon.Count == 0)
-        {
-            context.AppendLine("  - No casualties yet");
-        }
-        else
-        {
-            foreach (var pokemon in state.DeadPokemon)
-            {
-                context.AppendLine($"  - {pokemon.Nickname} ({pokemon.Species}, Lv.{pokemon.Level}) - Died at {pokemon.DeathLocation}: {pokemon.CauseOfDeath}");
-            }
-        }
+        // DEATHS — one line
+        var deathEntries = state.DeadPokemon.Count > 0
+            ? string.Join(", ", state.DeadPokemon.Select(p => $"{p.Nickname}/{p.Species} Lv{p.Level} @ {p.DeathLocation}"))
+            : "none";
+        lines.AppendLine($"DEATHS ({state.DeadPokemon.Count}): {deathEntries}");
 
-        // Encounters
-        context.AppendLine($"\nENCOUNTERS USED ({state.Encounters.Count} locations):");
-        if (state.Encounters.Count == 0)
-        {
-            context.AppendLine("  - No encounters recorded yet");
-        }
-        else
-        {
-            foreach (var encounter in state.Encounters)
-            {
-                var captured = encounter.Value.EncounterUsed
-                    ? $"Caught: {encounter.Value.CapturedNickname} ({encounter.Value.CapturedSpecies})"
-                    : "Failed/Skipped";
-                context.AppendLine($"  - {encounter.Key}: {captured}");
-            }
-        }
+        // ITEMS — one line
+        var itemEntries = state.Inventory.Count > 0
+            ? string.Join(", ", state.Inventory.Select(i => $"{i.Name} x{i.Quantity}"))
+            : "none";
+        lines.AppendLine($"ITEMS: {itemEntries}");
 
-        return context.ToString();
+        // LOCATION — derived from most recent encounter by date
+        var lastEncounter = state.Encounters.Values
+            .OrderByDescending(e => e.EncounterDate)
+            .FirstOrDefault();
+        var location = lastEncounter != null
+            ? state.Encounters.First(kv => kv.Value == lastEncounter).Key
+            : "unknown";
+        lines.AppendLine($"LOCATION: {location}");
+
+        return lines.ToString();
     }
 
     private string BuildBattleContextString(Models.BattleContext battleContext)
     {
         if (!battleContext.InBattle)
-            return "\nBATTLE STATUS: Not in battle";
+            return "BATTLE: none";
 
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine("\nACTIVE BATTLE:");
-        sb.AppendLine($"  Opponent: {battleContext.OpponentName}");
+        var parts = new List<string>();
+        if (!string.IsNullOrEmpty(battleContext.OpponentName))
+            parts.Add($"vs {battleContext.OpponentName}");
         if (!string.IsNullOrEmpty(battleContext.BattleType))
-            sb.AppendLine($"  Battle Type: {battleContext.BattleType}");
+            parts.Add(battleContext.BattleType);
         if (!string.IsNullOrEmpty(battleContext.ActivePokemonNickname))
-            sb.AppendLine($"  Leading with: {battleContext.ActivePokemonNickname}");
-        sb.AppendLine($"  Turn: {battleContext.TurnCount}");
+            parts.Add($"leading:{battleContext.ActivePokemonNickname}");
+        parts.Add($"turn {battleContext.TurnCount}");
 
-        if (battleContext.BattleLog.Count > 0)
-        {
-            sb.AppendLine("  Battle Log:");
-            foreach (var entry in battleContext.BattleLog)
-                sb.AppendLine($"    {entry}");
-        }
-
-        return sb.ToString();
+        return $"BATTLE: {string.Join(", ", parts)}";
     }
 }

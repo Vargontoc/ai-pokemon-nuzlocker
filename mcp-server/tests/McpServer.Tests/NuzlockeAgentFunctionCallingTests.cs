@@ -278,3 +278,158 @@ public class NuzlockeAgentFunctionCallingTests
         ), Times.Exactly(10));
     }
 }
+
+public class NuzlockeAgentStateContextTests
+{
+    private readonly Mock<IAiProvider> _mockAiProvider = new();
+    private readonly Mock<IStateManager> _mockStateManager = new();
+    private readonly Mock<ILogger<NuzlockeAgent>> _mockLogger = new();
+    private readonly NuzlockeAgent _agent;
+
+    public NuzlockeAgentStateContextTests()
+    {
+        var mockPokeApiConnector = new Mock<IPokeApiConnector>();
+        var mockWorkflowEngine = new Mock<IWorkflowEngine>();
+        var mockToolExecutorLogger = new Mock<ILogger<ToolExecutor>>();
+        var mockToolExecutor = new Mock<ToolExecutor>(
+            _mockStateManager.Object,
+            mockPokeApiConnector.Object,
+            mockWorkflowEngine.Object,
+            mockToolExecutorLogger.Object);
+
+        _mockStateManager.Setup(m => m.GetBattleContextAsync()).ReturnsAsync(new BattleContext());
+        _mockStateManager.Setup(m => m.GetBattleContextAsync(It.IsAny<string>())).ReturnsAsync(new BattleContext());
+
+        _mockAiProvider.Setup(p => p.GetCompletionWithToolsAsync(
+            It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<IEnumerable<ToolDefinition>>(), It.IsAny<List<ToolCallResult>?>(),
+            It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AiResponse { TextResponse = "advice", ToolCalls = new() });
+
+        _agent = new NuzlockeAgent(
+            _mockAiProvider.Object,
+            _mockStateManager.Object,
+            mockToolExecutor.Object,
+            _mockLogger.Object);
+    }
+
+    private string CaptureUserMessage(Action setup)
+    {
+        var captured = string.Empty;
+        _mockAiProvider.Setup(p => p.GetCompletionWithToolsAsync(
+            It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<IEnumerable<ToolDefinition>>(), It.IsAny<List<ToolCallResult>?>(),
+            It.IsAny<CancellationToken>()))
+            .Callback<string, string, IEnumerable<ToolDefinition>, List<ToolCallResult>?, CancellationToken>(
+                (_, msg, _, _, _) => captured = msg)
+            .ReturnsAsync(new AiResponse { TextResponse = "advice", ToolCalls = new() });
+        setup();
+        return captured;
+    }
+
+    [Fact]
+    public async Task GetAdviceAsync_WithLoadedState_PromptContainsCompactTeamAndItems()
+    {
+        var state = new NuzlockeState
+        {
+            Team = new List<TeamMember>
+            {
+                new() { Nickname = "Sparky", Species = "pikachu", Level = 15, CurrentHP = 35, MaxHP = 45 },
+                new() { Nickname = "Blaze", Species = "charmander", Level = 12 }
+            },
+            PCStorage = new List<StoredPokemon>
+            {
+                new() { Nickname = "Caterpie", Species = "caterpie", Level = 5 }
+            },
+            DeadPokemon = new List<DeadPokemon>
+            {
+                new() { Nickname = "Pidgey", Species = "pidgey", Level = 6, DeathLocation = "Route 1" }
+            },
+            Inventory = new List<InventoryItem>
+            {
+                new() { Name = "Potion", Quantity = 3 },
+                new() { Name = "Antidote", Quantity = 1 }
+            },
+            Encounters = new Dictionary<string, EncounterRecord>
+            {
+                ["Route 1"] = new() { Location = "Route 1", EncounterUsed = true, EncounterDate = DateTime.UtcNow }
+            }
+        };
+
+        string capturedMsg = string.Empty;
+        _mockStateManager.Setup(m => m.GetStateAsync()).ReturnsAsync(state);
+        _mockAiProvider.Setup(p => p.GetCompletionWithToolsAsync(
+            It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<IEnumerable<ToolDefinition>>(), It.IsAny<List<ToolCallResult>?>(),
+            It.IsAny<CancellationToken>()))
+            .Callback<string, string, IEnumerable<ToolDefinition>, List<ToolCallResult>?, CancellationToken>(
+                (_, msg, _, _, _) => capturedMsg = msg)
+            .ReturnsAsync(new AiResponse { TextResponse = "advice", ToolCalls = new() });
+
+        await _agent.GetAdviceAsync("How is my team?");
+
+        Assert.Contains("TEAM (2/6):", capturedMsg);
+        Assert.Contains("Sparky/pikachu Lv15 [HP:35/45]", capturedMsg);
+        Assert.Contains("Blaze/charmander Lv12", capturedMsg);
+        Assert.Contains("PC (1):", capturedMsg);
+        Assert.Contains("Caterpie/caterpie Lv5", capturedMsg);
+        Assert.Contains("DEATHS (1):", capturedMsg);
+        Assert.Contains("Pidgey/pidgey Lv6 @ Route 1", capturedMsg);
+        Assert.Contains("ITEMS: Potion x3, Antidote x1", capturedMsg);
+        Assert.Contains("LOCATION: Route 1", capturedMsg);
+    }
+
+    [Fact]
+    public async Task GetAdviceAsync_WithEmptyState_PromptShowsNoneForAllSections()
+    {
+        _mockStateManager.Setup(m => m.GetStateAsync()).ReturnsAsync(new NuzlockeState());
+
+        string capturedMsg = string.Empty;
+        _mockAiProvider.Setup(p => p.GetCompletionWithToolsAsync(
+            It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<IEnumerable<ToolDefinition>>(), It.IsAny<List<ToolCallResult>?>(),
+            It.IsAny<CancellationToken>()))
+            .Callback<string, string, IEnumerable<ToolDefinition>, List<ToolCallResult>?, CancellationToken>(
+                (_, msg, _, _, _) => capturedMsg = msg)
+            .ReturnsAsync(new AiResponse { TextResponse = "advice", ToolCalls = new() });
+
+        await _agent.GetAdviceAsync("What should I do?");
+
+        Assert.Contains("TEAM (0/6): none", capturedMsg);
+        Assert.Contains("PC (0): none", capturedMsg);
+        Assert.Contains("DEATHS (0): none", capturedMsg);
+        Assert.Contains("ITEMS: none", capturedMsg);
+        Assert.Contains("LOCATION: unknown", capturedMsg);
+        Assert.Contains("BATTLE: none", capturedMsg);
+    }
+
+    [Fact]
+    public async Task GetAdviceAsync_WithActiveBattle_PromptReflectsBattleInProgress()
+    {
+        _mockStateManager.Setup(m => m.GetStateAsync()).ReturnsAsync(new NuzlockeState());
+        _mockStateManager.Setup(m => m.GetBattleContextAsync()).ReturnsAsync(new BattleContext
+        {
+            InBattle = true,
+            OpponentName = "Brock/Onix",
+            BattleType = "gym",
+            ActivePokemonNickname = "Sparky",
+            TurnCount = 3
+        });
+
+        string capturedMsg = string.Empty;
+        _mockAiProvider.Setup(p => p.GetCompletionWithToolsAsync(
+            It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<IEnumerable<ToolDefinition>>(), It.IsAny<List<ToolCallResult>?>(),
+            It.IsAny<CancellationToken>()))
+            .Callback<string, string, IEnumerable<ToolDefinition>, List<ToolCallResult>?, CancellationToken>(
+                (_, msg, _, _, _) => capturedMsg = msg)
+            .ReturnsAsync(new AiResponse { TextResponse = "advice", ToolCalls = new() });
+
+        await _agent.GetAdviceAsync("What move should I use?");
+
+        Assert.Contains("BATTLE: vs Brock/Onix", capturedMsg);
+        Assert.Contains("gym", capturedMsg);
+        Assert.Contains("leading:Sparky", capturedMsg);
+        Assert.Contains("turn 3", capturedMsg);
+    }
+}
