@@ -87,6 +87,9 @@ builder.Services.AddScoped<INuzlockeFileManager, NuzlockeFileManager>();
 // Register Nuzlocke state manager
 builder.Services.AddScoped<IStateManager, StateManager>();
 
+// Register Conversation Memory store
+builder.Services.AddScoped<IConversationMemoryStore, FileConversationMemoryStore>();
+
 // Register ToolExecutor
 builder.Services.AddScoped<ToolExecutor>();
 

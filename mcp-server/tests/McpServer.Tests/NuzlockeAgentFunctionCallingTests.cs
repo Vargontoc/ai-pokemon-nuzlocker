@@ -433,3 +433,154 @@ public class NuzlockeAgentStateContextTests
         Assert.Contains("turn 3", capturedMsg);
     }
 }
+
+public class NuzlockeAgentConversationMemoryTests
+{
+    private readonly Mock<IAiProvider> _mockAiProvider;
+    private readonly Mock<IStateManager> _mockStateManager;
+    private readonly Mock<ToolExecutor> _mockToolExecutor;
+    private readonly Mock<IConversationMemoryStore> _mockMemoryStore;
+
+    private NuzlockeAgent CreateAgent() => new NuzlockeAgent(
+        _mockAiProvider.Object,
+        _mockStateManager.Object,
+        _mockToolExecutor.Object,
+        new Mock<ILogger<NuzlockeAgent>>().Object,
+        memoryStore: _mockMemoryStore.Object);
+
+    private AiResponse SimpleResponse(string text = "Strategic advice here.") =>
+        new AiResponse { TextResponse = text, ToolCalls = new() };
+
+    public NuzlockeAgentConversationMemoryTests()
+    {
+        _mockAiProvider = new Mock<IAiProvider>();
+        _mockStateManager = new Mock<IStateManager>();
+        _mockMemoryStore = new Mock<IConversationMemoryStore>();
+
+        var mockPokeApiConnector = new Mock<IPokeApiConnector>();
+        var mockWorkflowEngine = new Mock<IWorkflowEngine>();
+        _mockToolExecutor = new Mock<ToolExecutor>(
+            _mockStateManager.Object,
+            mockPokeApiConnector.Object,
+            mockWorkflowEngine.Object,
+            new Mock<ILogger<ToolExecutor>>().Object);
+
+        _mockStateManager.Setup(m => m.GetStateAsync()).ReturnsAsync(new NuzlockeState());
+        _mockStateManager.Setup(m => m.GetStateAsync(It.IsAny<string>())).ReturnsAsync(new NuzlockeState());
+        _mockStateManager.Setup(m => m.GetBattleContextAsync()).ReturnsAsync(new BattleContext());
+        _mockStateManager.Setup(m => m.GetBattleContextAsync(It.IsAny<string>())).ReturnsAsync(new BattleContext());
+
+        _mockAiProvider.Setup(p => p.GetCompletionWithToolsAsync(
+            It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<IEnumerable<ToolDefinition>>(), It.IsAny<List<ToolCallResult>?>(),
+            It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SimpleResponse());
+    }
+
+    [Fact]
+    public async Task GetAdviceAsync_NoHistory_PromptDoesNotContainHistorySection()
+    {
+        _mockMemoryStore.Setup(m => m.LoadAsync(It.IsAny<string>()))
+            .ReturnsAsync(new List<ConversationEntry>());
+
+        string capturedMsg = string.Empty;
+        _mockAiProvider.Setup(p => p.GetCompletionWithToolsAsync(
+            It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<IEnumerable<ToolDefinition>>(), It.IsAny<List<ToolCallResult>?>(),
+            It.IsAny<CancellationToken>()))
+            .Callback<string, string, IEnumerable<ToolDefinition>, List<ToolCallResult>?, CancellationToken>(
+                (_, msg, _, _, _) => capturedMsg = msg)
+            .ReturnsAsync(SimpleResponse());
+
+        await CreateAgent().GetAdviceAsync("What should I do?", sessionId: "session-1");
+
+        Assert.DoesNotContain("HISTORY:", capturedMsg);
+    }
+
+    [Fact]
+    public async Task GetAdviceAsync_WithHistory_PromptContainsHistorySection()
+    {
+        var history = new List<ConversationEntry>
+        {
+            new() { Role = "user", Content = "Should I catch Rattata?" },
+            new() { Role = "assistant", Content = "Yes, good type coverage." }
+        };
+        _mockMemoryStore.Setup(m => m.LoadAsync("session-1")).ReturnsAsync(history);
+
+        string capturedMsg = string.Empty;
+        _mockAiProvider.Setup(p => p.GetCompletionWithToolsAsync(
+            It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<IEnumerable<ToolDefinition>>(), It.IsAny<List<ToolCallResult>?>(),
+            It.IsAny<CancellationToken>()))
+            .Callback<string, string, IEnumerable<ToolDefinition>, List<ToolCallResult>?, CancellationToken>(
+                (_, msg, _, _, _) => capturedMsg = msg)
+            .ReturnsAsync(SimpleResponse());
+
+        await CreateAgent().GetAdviceAsync("What next?", sessionId: "session-1");
+
+        Assert.Contains("HISTORY:", capturedMsg);
+        Assert.Contains("[User]: Should I catch Rattata?", capturedMsg);
+        Assert.Contains("[Assistant]: Yes, good type coverage.", capturedMsg);
+    }
+
+    [Fact]
+    public async Task GetAdviceAsync_PersistsConversationAfterResponse()
+    {
+        const string sessionId = "session-persist";
+        _mockMemoryStore.Setup(m => m.LoadAsync(sessionId)).ReturnsAsync(new List<ConversationEntry>());
+        _mockMemoryStore.Setup(m => m.AppendAsync(sessionId, It.IsAny<ConversationEntry>()))
+            .Returns(Task.CompletedTask);
+
+        await CreateAgent().GetAdviceAsync("Best move?", sessionId: sessionId);
+
+        _mockMemoryStore.Verify(m => m.AppendAsync(
+            sessionId,
+            It.Is<ConversationEntry>(e => e.Role == "user" && e.Content == "Best move?")),
+            Times.Once);
+        _mockMemoryStore.Verify(m => m.AppendAsync(
+            sessionId,
+            It.Is<ConversationEntry>(e => e.Role == "assistant" && e.Content == "Strategic advice here.")),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task GetAdviceAsync_HistoryLimit_OnlyLastNTurnsInjected()
+    {
+        // 25 entries — exceeds MaxHistoryTurns * 2 = 20; zero-padded to avoid substring collisions
+        var history = Enumerable.Range(1, 25)
+            .Select(i => new ConversationEntry
+            {
+                Role = i % 2 == 0 ? "assistant" : "user",
+                Content = $"turn-{i:D3}-content"
+            })
+            .ToList();
+        _mockMemoryStore.Setup(m => m.LoadAsync("session-limit")).ReturnsAsync(history);
+
+        string capturedMsg = string.Empty;
+        _mockAiProvider.Setup(p => p.GetCompletionWithToolsAsync(
+            It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<IEnumerable<ToolDefinition>>(), It.IsAny<List<ToolCallResult>?>(),
+            It.IsAny<CancellationToken>()))
+            .Callback<string, string, IEnumerable<ToolDefinition>, List<ToolCallResult>?, CancellationToken>(
+                (_, msg, _, _, _) => capturedMsg = msg)
+            .ReturnsAsync(SimpleResponse());
+
+        await CreateAgent().GetAdviceAsync("Help?", sessionId: "session-limit");
+
+        // First 5 entries should be excluded (only last 20 of 25 injected)
+        Assert.DoesNotContain("turn-001-content", capturedMsg);
+        Assert.DoesNotContain("turn-005-content", capturedMsg);
+        // Entry 6 onward should be present
+        Assert.Contains("turn-006-content", capturedMsg);
+        Assert.Contains("turn-025-content", capturedMsg);
+    }
+
+    [Fact]
+    public async Task GetAdviceAsync_NullSessionId_SkipsMemoryLoad()
+    {
+        await CreateAgent().GetAdviceAsync("What should I do?", sessionId: null);
+
+        _mockMemoryStore.Verify(m => m.LoadAsync(It.IsAny<string>()), Times.Never);
+        _mockMemoryStore.Verify(m => m.AppendAsync(It.IsAny<string>(), It.IsAny<ConversationEntry>()), Times.Never);
+    }
+}

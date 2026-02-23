@@ -18,8 +18,10 @@ public class NuzlockeAgent
     private readonly Kernel? _kernel;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<NuzlockeAgent> _logger;
+    private readonly IConversationMemoryStore? _memoryStore;
 
     private const int MaxToolCycles = 10;
+    private const int MaxHistoryTurns = 10;
 
     private const string SystemPrompt = @"You are a Pokemon Nuzlocke Challenge expert assistant. You help players make strategic decisions during their Nuzlocke runs.
 
@@ -76,7 +78,8 @@ Be concise but insightful. Prioritize survival and strategic planning. Remember 
         ILogger<NuzlockeAgent> logger,
         Kernel? kernel = null,
         ILoggerFactory? loggerFactory = null,
-        PokeApiAgent? pokeApiAgent = null)
+        PokeApiAgent? pokeApiAgent = null,
+        IConversationMemoryStore? memoryStore = null)
     {
         _aiProvider = aiProvider;
         _stateManager = stateManager;
@@ -85,6 +88,7 @@ Be concise but insightful. Prioritize survival and strategic planning. Remember 
         _pokeApiAgent = pokeApiAgent;
         _kernel = kernel;
         _loggerFactory = loggerFactory ?? Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance;
+        _memoryStore = memoryStore;
 
         // Register Nuzlocke plugin in kernel so the kernel functions can access state
         try
@@ -126,11 +130,17 @@ Be concise but insightful. Prioritize survival and strategic planning. Remember 
                 : await _stateManager.GetBattleContextAsync(sessionId);
             var battleContextString = BuildBattleContextString(battleContext);
 
+            // Load conversation history
+            var history = _memoryStore != null && !string.IsNullOrEmpty(sessionId)
+                ? await _memoryStore.LoadAsync(sessionId)
+                : new List<Models.ConversationEntry>();
+            var historySection = BuildHistoryContext(history);
+
             // Combine state context with user question
             var fullMessage = $@"CURRENT GAME STATE:
 {stateContext}
 {battleContextString}
-
+{historySection}
 USER QUESTION: {userQuestion}
 LANGUAGE RESPONSE: {lng}
 You have access to tools to interact with the game state and battle context if needed. Use them when appropriate.
@@ -272,6 +282,13 @@ Provide strategic advice based on the current state and the user's question on l
                 }
             }
 
+            // Persist conversation turn
+            if (_memoryStore != null && !string.IsNullOrEmpty(sessionId) && !string.IsNullOrEmpty(finalResponse))
+            {
+                await _memoryStore.AppendAsync(sessionId, new Models.ConversationEntry { Role = "user", Content = userQuestion });
+                await _memoryStore.AppendAsync(sessionId, new Models.ConversationEntry { Role = "assistant", Content = finalResponse });
+            }
+
             return finalResponse;
         }
         catch (Exception ex)
@@ -306,10 +323,15 @@ Provide strategic advice based on the current state and the user's question on l
             : await _stateManager.GetBattleContextAsync(sessionId);
         var battleContextString = BuildBattleContextString(battleContext);
 
+        var history = _memoryStore != null && !string.IsNullOrEmpty(sessionId)
+            ? await _memoryStore.LoadAsync(sessionId)
+            : new List<Models.ConversationEntry>();
+        var historySection = BuildHistoryContext(history);
+
         var fullMessage = $@"CURRENT GAME STATE:
 {stateContext}
 {battleContextString}
-
+{historySection}
 USER QUESTION: {userQuestion}
 LANGUAGE RESPONSE: {lng}
 You have access to tools when appropriate. Provide strategic advice based on the current state and the user's question on language response";
@@ -379,5 +401,22 @@ You have access to tools when appropriate. Provide strategic advice based on the
         parts.Add($"turn {battleContext.TurnCount}");
 
         return $"BATTLE: {string.Join(", ", parts)}";
+    }
+
+    private string BuildHistoryContext(List<Models.ConversationEntry> history)
+    {
+        if (history.Count == 0)
+            return string.Empty;
+
+        // Each turn = 1 user + 1 assistant entry → cap at MaxHistoryTurns * 2 entries
+        var recent = history.TakeLast(MaxHistoryTurns * 2).ToList();
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("HISTORY:");
+        foreach (var entry in recent)
+        {
+            var role = entry.Role == "user" ? "[User]" : "[Assistant]";
+            sb.AppendLine($"{role}: {entry.Content}");
+        }
+        return sb.ToString();
     }
 }
