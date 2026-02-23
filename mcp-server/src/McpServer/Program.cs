@@ -90,6 +90,9 @@ builder.Services.AddScoped<IStateManager, StateManager>();
 // Register Conversation Memory store
 builder.Services.AddScoped<IConversationMemoryStore, FileConversationMemoryStore>();
 
+// Register Stats Calculator (Gen 1)
+builder.Services.AddScoped<IStatsCalculator, Gen1StatsCalculator>();
+
 // Register ToolExecutor
 builder.Services.AddScoped<ToolExecutor>();
 
@@ -184,6 +187,7 @@ builder.Services.AddScoped<IWorkflow, InitNuzlockeWorkflow>();
 builder.Services.AddScoped<IWorkflow, CapturePokemonWorkflow>();
 builder.Services.AddScoped<IWorkflow, RouteEncounterWorkflow>();
 builder.Services.AddScoped<IWorkflow, ItemObtainedWorkflow>();
+builder.Services.AddScoped<IWorkflow, LevelUpWorkflow>();
 
 // Configure MCP Server
 builder.Services

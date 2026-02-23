@@ -46,6 +46,8 @@ Examples of when to use execute_workflow:
 - ""I found 2 potions in Viridian City"" → execute_workflow with workflowId=""item_obtained"", parameters={""nuzlocke_id"":""<id>"",""item_name"":""potion"",""quantity"":2,""category"":""potion"",""location"":""Viridian City""}
 - ""I'm about to enter Route 3, what Pokemon can I find?"" → execute_workflow with workflowId=""route_encounter"", parameters={""nuzlocke_id"":""<id>"",""route_name"":""Route 3""}
 - ""Start a new Nuzlocke! I'm Red playing Pokemon Red"" → execute_workflow with workflowId=""init_nuzlocke"", parameters={""player_name"":""Red"",""game_version"":""red"",""generation"":1}
+- ""Sparky just leveled up to 25!"" → execute_workflow with workflowId=""level_up"", parameters={""nuzlocke_id"":""<id>"",""nickname"":""Sparky"",""new_level"":25}
+- ""My Pikachu leveled up"" (no level given) → execute_workflow with workflowId=""level_up"", parameters={""nuzlocke_id"":""<id>"",""nickname"":""Pikachu""} (omit new_level to auto-increment)
 
 ALWAYS prefer execute_workflow over manual tools (add_to_team, record_encounter) for game events. Workflows enforce rules automatically.
 If the workflow returns errors, inform the user clearly and suggest corrections.

@@ -1,6 +1,18 @@
 namespace es.vargontoc.nuzlocke.ai.Models;
 
 /// <summary>
+/// Calculated stats for a Pokemon (HP, Attack, Defense, Speed, Special in Gen 1)
+/// </summary>
+public class PokemonStats
+{
+    public int HP { get; set; }
+    public int Attack { get; set; }
+    public int Defense { get; set; }
+    public int Speed { get; set; }
+    public int Special { get; set; }
+}
+
+/// <summary>
 /// Representa el estado completo de una partida Nuzlocke
 /// </summary>
 public class NuzlockeState
@@ -100,6 +112,21 @@ public class TeamMember
     /// Fecha de captura
     /// </summary>
     public DateTime CaughtDate { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Determinant Values (DVs/IVs) por stat: [HP, Atk, Def, Spe, Sp]. Rango 0-15. Default 8 (media).
+    /// </summary>
+    public int[] DVs { get; set; } = new[] { 8, 8, 8, 8, 8 };
+
+    /// <summary>
+    /// Stat Experience (EVs) por stat: [HP, Atk, Def, Spe, Sp]. Rango 0-65535. Default 0.
+    /// </summary>
+    public int[] StatExp { get; set; } = new[] { 0, 0, 0, 0, 0 };
+
+    /// <summary>
+    /// Stats calculados según fórmula Gen 1.
+    /// </summary>
+    public PokemonStats Stats { get; set; } = new();
 }
 
 /// <summary>
@@ -177,6 +204,21 @@ public class StoredPokemon
     /// Fecha de captura
     /// </summary>
     public DateTime CaughtDate { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Determinant Values (DVs/IVs) por stat: [HP, Atk, Def, Spe, Sp]. Rango 0-15. Default 8 (media).
+    /// </summary>
+    public int[] DVs { get; set; } = new[] { 8, 8, 8, 8, 8 };
+
+    /// <summary>
+    /// Stat Experience (EVs) por stat: [HP, Atk, Def, Spe, Sp]. Rango 0-65535. Default 0.
+    /// </summary>
+    public int[] StatExp { get; set; } = new[] { 0, 0, 0, 0, 0 };
+
+    /// <summary>
+    /// Stats calculados según fórmula Gen 1.
+    /// </summary>
+    public PokemonStats Stats { get; set; } = new();
 }
 
 /// <summary>

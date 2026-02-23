@@ -61,8 +61,15 @@ public class CapturePokemonWorkflowTests
             .ReturnsAsync("Pikachu is a great addition to your team!");
     }
 
-    private CapturePokemonWorkflow CreateWorkflow() =>
-        new(_mockState.Object, _mockPokeApi.Object, _mockAi.Object, _mockFileManager.Object, _mockLogger.Object);
+    private readonly Mock<IStatsCalculator> _mockStatsCalc = new();
+
+    private CapturePokemonWorkflow CreateWorkflow()
+    {
+        _mockStatsCalc.Setup(c => c.Calculate(
+            It.IsAny<int[]>(), It.IsAny<int[]>(), It.IsAny<int[]>(), It.IsAny<int>(), It.IsAny<float>()))
+            .Returns(new PokemonStats { HP = 45, Attack = 55, Defense = 40, Speed = 90, Special = 50 });
+        return new(_mockState.Object, _mockPokeApi.Object, _mockAi.Object, _mockFileManager.Object, _mockStatsCalc.Object, _mockLogger.Object);
+    }
 
     private static WorkflowParameters MakeParams(object obj)
     {

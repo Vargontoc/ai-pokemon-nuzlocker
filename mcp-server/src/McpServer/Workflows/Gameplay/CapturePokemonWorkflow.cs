@@ -14,6 +14,7 @@ namespace es.vargontoc.nuzlocke.ai.Workflows.Gameplay;
 public class CapturePokemonWorkflow : WorkflowBase
 {
     private readonly INuzlockeFileManager _fileManager;
+    private readonly IStatsCalculator _statsCalculator;
 
     public override string WorkflowId => "capture_pokemon";
 
@@ -22,10 +23,12 @@ public class CapturePokemonWorkflow : WorkflowBase
         IPokeApiConnector pokeApi,
         IAiProvider aiProvider,
         INuzlockeFileManager fileManager,
+        IStatsCalculator statsCalculator,
         ILogger<CapturePokemonWorkflow> logger)
         : base(stateManager, pokeApi, aiProvider, logger)
     {
         _fileManager = fileManager;
+        _statsCalculator = statsCalculator;
     }
 
     public override IReadOnlyList<string> Validate(WorkflowParameters parameters)
@@ -129,6 +132,11 @@ public class CapturePokemonWorkflow : WorkflowBase
         // Re-read state after encounter was recorded
         var state = await StateManager.GetStateAsync(context.SessionId);
 
+        var baseStats = ExtractBaseStats(pokemonData.Stats);
+        var defaultDvs = new[] { 8, 8, 8, 8, 8 };
+        var defaultStatExp = new[] { 0, 0, 0, 0, 0 };
+        var calculatedStats = _statsCalculator.Calculate(baseStats, defaultDvs, defaultStatExp, level);
+
         var teamMember = new TeamMember
         {
             Nickname = nickname,
@@ -136,7 +144,10 @@ public class CapturePokemonWorkflow : WorkflowBase
             Level = level,
             Moves = pokemonData.MovesBasicos.Take(4).ToList(),
             CaughtAt = location,
-            CaughtDate = DateTime.UtcNow
+            CaughtDate = DateTime.UtcNow,
+            DVs = defaultDvs,
+            StatExp = defaultStatExp,
+            Stats = calculatedStats
         };
 
         string destination;
@@ -164,7 +175,10 @@ public class CapturePokemonWorkflow : WorkflowBase
                 Level = level,
                 Moves = pokemonData.MovesBasicos.Take(4).ToList(),
                 CaughtAt = location,
-                CaughtDate = DateTime.UtcNow
+                CaughtDate = DateTime.UtcNow,
+                DVs = defaultDvs,
+                StatExp = defaultStatExp,
+                Stats = calculatedStats
             };
 
             state.PCStorage.Add(storedPokemon);
@@ -193,6 +207,22 @@ public class CapturePokemonWorkflow : WorkflowBase
             Keep the response under 250 words.
             You answer in {context.Language} language.
             """;
+    }
+
+    /// <summary>
+    /// Maps PokeAPI stat dict → int[5] in Gen 1 order: [HP, Atk, Def, Spe, Sp].
+    /// Uses "special-attack" as the single Gen 1 special stat.
+    /// </summary>
+    internal static int[] ExtractBaseStats(Dictionary<string, int> stats)
+    {
+        return new[]
+        {
+            stats.GetValueOrDefault("hp", 45),
+            stats.GetValueOrDefault("attack", 45),
+            stats.GetValueOrDefault("defense", 45),
+            stats.GetValueOrDefault("speed", 45),
+            stats.GetValueOrDefault("special-attack", 45)
+        };
     }
 
     protected override string BuildUserMessage(WorkflowContext context)
