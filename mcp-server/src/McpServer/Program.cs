@@ -93,6 +93,9 @@ builder.Services.AddScoped<IConversationMemoryStore, FileConversationMemoryStore
 // Register Stats Calculator (Gen 1)
 builder.Services.AddScoped<IStatsCalculator, Gen1StatsCalculator>();
 
+// Register Personality Prompt Provider
+builder.Services.AddSingleton<IPersonalityPromptProvider, PersonalityPromptProvider>();
+
 // Register ToolExecutor
 builder.Services.AddScoped<ToolExecutor>();
 
@@ -188,6 +191,7 @@ builder.Services.AddScoped<IWorkflow, CapturePokemonWorkflow>();
 builder.Services.AddScoped<IWorkflow, RouteEncounterWorkflow>();
 builder.Services.AddScoped<IWorkflow, ItemObtainedWorkflow>();
 builder.Services.AddScoped<IWorkflow, LevelUpWorkflow>();
+builder.Services.AddScoped<IWorkflow, SetPersonalityWorkflow>();
 
 // Configure MCP Server
 builder.Services

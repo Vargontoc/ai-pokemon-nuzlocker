@@ -58,6 +58,11 @@ public class NuzlockeState
     public string LockeType { get; set; } = "standard";
 
     /// <summary>
+    /// Personalidad del agente para esta partida. Default: Technical.
+    /// </summary>
+    public AgentPersonality Personality { get; set; } = AgentPersonality.Technical;
+
+    /// <summary>
     /// Fecha de inicio de la partida
     /// </summary>
     public DateTime StartDate { get; set; } = DateTime.UtcNow;

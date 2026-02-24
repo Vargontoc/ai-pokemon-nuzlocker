@@ -19,6 +19,7 @@ public class NuzlockeAgent
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<NuzlockeAgent> _logger;
     private readonly IConversationMemoryStore? _memoryStore;
+    private readonly IPersonalityPromptProvider? _personalityProvider;
 
     private const int MaxToolCycles = 10;
     private const int MaxHistoryTurns = 10;
@@ -48,6 +49,7 @@ Examples of when to use execute_workflow:
 - ""Start a new Nuzlocke! I'm Red playing Pokemon Red"" → execute_workflow with workflowId=""init_nuzlocke"", parameters={""player_name"":""Red"",""game_version"":""red"",""generation"":1}
 - ""Sparky just leveled up to 25!"" → execute_workflow with workflowId=""level_up"", parameters={""nuzlocke_id"":""<id>"",""nickname"":""Sparky"",""new_level"":25}
 - ""My Pikachu leveled up"" (no level given) → execute_workflow with workflowId=""level_up"", parameters={""nuzlocke_id"":""<id>"",""nickname"":""Pikachu""} (omit new_level to auto-increment)
+- ""Be more cheerful"" or ""change your personality to Enthusiastic"" → execute_workflow with workflowId=""set_personality"", parameters={""nuzlocke_id"":""<id>"",""personality"":""Enthusiastic""}
 
 ALWAYS prefer execute_workflow over manual tools (add_to_team, record_encounter) for game events. Workflows enforce rules automatically.
 If the workflow returns errors, inform the user clearly and suggest corrections.
@@ -73,6 +75,13 @@ Always consider:
 
 Be concise but insightful. Prioritize survival and strategic planning. Remember that every decision matters in a Nuzlocke challenge.";
 
+    private string BuildSystemPrompt(Models.AgentPersonality personality)
+    {
+        if (_personalityProvider == null)
+            return SystemPrompt;
+        return SystemPrompt + "\n\n" + _personalityProvider.GetPersonalityBlock(personality);
+    }
+
     public NuzlockeAgent(
         IAiProvider aiProvider,
         IStateManager stateManager,
@@ -81,7 +90,8 @@ Be concise but insightful. Prioritize survival and strategic planning. Remember 
         Kernel? kernel = null,
         ILoggerFactory? loggerFactory = null,
         PokeApiAgent? pokeApiAgent = null,
-        IConversationMemoryStore? memoryStore = null)
+        IConversationMemoryStore? memoryStore = null,
+        IPersonalityPromptProvider? personalityProvider = null)
     {
         _aiProvider = aiProvider;
         _stateManager = stateManager;
@@ -91,6 +101,7 @@ Be concise but insightful. Prioritize survival and strategic planning. Remember 
         _kernel = kernel;
         _loggerFactory = loggerFactory ?? Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance;
         _memoryStore = memoryStore;
+        _personalityProvider = personalityProvider;
 
         // Register Nuzlocke plugin in kernel so the kernel functions can access state
         try
@@ -192,7 +203,7 @@ Provide strategic advice based on the current state and the user's question on l
                 _logger.LogDebug("Previous tool results count: {Count}", toolResults.Count);
                 
                 var response = await _aiProvider.GetCompletionWithToolsAsync(
-                    SystemPrompt,
+                    BuildSystemPrompt(state.Personality),
                     fullMessage,
                     tools,
                     toolResults.Count > 0 ? toolResults : null,
@@ -338,7 +349,7 @@ USER QUESTION: {userQuestion}
 LANGUAGE RESPONSE: {lng}
 You have access to tools when appropriate. Provide strategic advice based on the current state and the user's question on language response";
 
-        await foreach (var chunk in _aiProvider.StreamCompletionAsync(SystemPrompt, fullMessage, cancellationToken))
+        await foreach (var chunk in _aiProvider.StreamCompletionAsync(BuildSystemPrompt(state.Personality), fullMessage, cancellationToken))
         {
             yield return chunk;
         }
