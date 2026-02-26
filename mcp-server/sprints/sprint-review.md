@@ -1,32 +1,44 @@
-## Sprint Review [23-02-2026-Agent-Personality]
+## Sprint Review [26-02-2026-Workflow-Evolution]
 
 ### Objetivos
-- [x] **Personalidad dinámica del agente**
-    - [x] Definir enum/constante `AgentPersonality`: `Technical`, `Friendly`, `Cynical`, `Sarcastic`, `Joker`, `Sensual`, `Depressed`, `Enthusiastic`
-    - [x] Añadir `Personality` al estado de sesión (configurable por sesión, no por nuzlocke)
-    - [x] Crear `IPersonalityPromptProvider` con método `GetPersonalityBlock(AgentPersonality)` → texto de instrucción para el system prompt
-    - [x] Implementar `PersonalityPromptProvider` con bloque de instrucción para cada personalidad (EN + ES)
-    - [x] Integrar en `NuzlockeAgent.SystemPrompt`: inyectar bloque de personalidad al construir el prompt (dinámico por sesión)
-    - [x] Exponer endpoint o workflow para que el usuario configure la personalidad: `set_personality` (parámetros: `nuzlocke_id`, `personality`)
-    - [x] Tests unitarios:
-        - [x] Cada personalidad genera un bloque de instrucción no vacío y distinto al resto
-        - [x] Sin personalidad configurada, el agente usa `Technical` (default)
-        - [x] El system prompt inyectado contiene el bloque de personalidad correcto
+- [ ] **Workflow `evolution`** — Evolución de un pokemon con análisis LLM de nuevas capacidades
+    - [ ] Parámetros:
+        - [ ] `nuzlocke_id` (req)
+        - [ ] `nickname` (req) — nickname del pokemon que evoluciona
+        - [ ] `evolved_species` (req) — nombre de la nueva especie (ej: `"raichu"`)
+        - [ ] `evolution_trigger` (opcional: `"level"` / `"stone"` / `"trade"` / `"other"`)
+    - [ ] `FetchDataAsync`: obtener datos de la nueva especie desde PokeAPI (`tipos`, `estadísticas base`)
+    - [ ] `MutateStateAsync`:
+        - [ ] Actualizar `Species` del pokemon al nuevo nombre
+        - [ ] Actualizar `Types` con los nuevos tipos
+        - [ ] Recalcular estadísticas con la nueva base (mismo nivel, DVs y StatExp del pokemon)
+        - [ ] Actualizar `MaxHP` con la nueva HP calculada
+        - [ ] Guardar estado
+    - [ ] `GenerateAdviceAsync`: análisis LLM de las nuevas capacidades (cambio de tipo, ganancias de estadísticas, sinergias con el equipo)
+    - [ ] Registrar en `Program.cs`
+    - [ ] Añadir ejemplo en `NuzlockeAgent.SystemPrompt`
+    - [ ] Tests unitarios:
+        - [ ] Evolución de pokemon en equipo: actualiza species, tipos y stats
+        - [ ] Evolución de pokemon en PC: funciona correctamente
+        - [ ] Pokemon no encontrado: devuelve error
+        - [ ] PokeAPI no reconoce la especie: devuelve error
+        - [ ] Stats recalculadas con nueva base y los DVs/StatExp existentes del pokemon
+        - [ ] Genera advice con datos comparativos
 
 ### Aprobación Sprint review
-- [x] Tests passing (240: 237 existentes + 2 PersonalityProvider + 1 integración agente)
+- [ ] Tests passing (246 existentes + ~6 nuevos de evolution)
 
 ### Riesgos
-- [x] El bloque de personalidad puede sesgar demasiado las respuestas técnicas → **Mitigación propuesta**: inyectar personalidad solo en el estilo de respuesta, no en las instrucciones de workflow ni reglas Nuzlocke.
+- [ ] El usuario puede introducir el nombre de la especie con espacios o capitalización → **Mitigación**: normalizar igual que en `manage_moves` (lowercase + hyphens)
+- [ ] Los DVs/StatExp del pokemon deben conservarse tras la evolución (no se resetean) → **Mitigación**: reutilizar los campos existentes del pokemon
+- [ ] Un pokemon puede aprender un movimiento al evolucionar → **Mitigación**: fuera de scope de este sprint; el usuario puede llamar a `manage_moves` después
 
 ### Fallos
-- []
+- [ ]
 
 ### Sugerencias para el próximo Sprint
-- [] **Workflow `manage_moves`**: Gestión de movimientos con análisis. Tiene dos vertientes, el usuario avisa que movimientos tiene el pokemon capturado lo cual seria solo mutable o que movimiento va aprender tanto por nivel o mt/mo. Mostrando toda la informacion de cada movimiento (tipo, categoria, potencia, precision, ...)
-- [] **Workflow `use_item`**: El usuario indica que ha usado un objeto, se resta en inventario se elimina si es 0 (salvo objetos clave o no consumibles). Y si conoce el efecto ejecuta dicho efecto.
-- [] **Workflow `evolution`**: Evolución de pokemon con análisis de nuevas capacidades
-- [] **Workflow `next_battle`**: Preparación pre-batalla
-- [] **Workflow `start_battle`**: Inicio de batalla con análisis estratégico del oponente
-- [] **Workflow `next_turn`**: Turno de batalla con log y consejo táctico
-- [] **Workflow `end_battle`**: Cierre de batalla con BattleRecord + bajas
+- [ ] **Workflow `use_item`**: El usuario indica que ha usado un objeto, se resta en inventario, se elimina si cantidad = 0 (salvo objetos clave o no consumibles). Si el objeto tiene efecto conocido, lo aplica.
+- [ ] **Workflow `next_battle`**: Preparación pre-batalla
+- [ ] **Workflow `start_battle`**: Inicio de batalla con análisis estratégico del oponente
+- [ ] **Workflow `next_turn`**: Turno de batalla con log y consejo táctico
+- [ ] **Workflow `end_battle`**: Cierre de batalla con BattleRecord + bajas

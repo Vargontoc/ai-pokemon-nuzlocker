@@ -50,6 +50,9 @@ Examples of when to use execute_workflow:
 - ""Sparky just leveled up to 25!"" → execute_workflow with workflowId=""level_up"", parameters={""nuzlocke_id"":""<id>"",""nickname"":""Sparky"",""new_level"":25}
 - ""My Pikachu leveled up"" (no level given) → execute_workflow with workflowId=""level_up"", parameters={""nuzlocke_id"":""<id>"",""nickname"":""Pikachu""} (omit new_level to auto-increment)
 - ""Be more cheerful"" or ""change your personality to Enthusiastic"" → execute_workflow with workflowId=""set_personality"", parameters={""nuzlocke_id"":""<id>"",""personality"":""Enthusiastic""}
+- ""Pikachu currently knows Thunderbolt, Quick Attack, Thunder Wave, Slam"" → execute_workflow with workflowId=""manage_moves"", parameters={""nuzlocke_id"":""<id>"",""nickname"":""Pikachu"",""moves"":[""Thunderbolt"",""Quick Attack"",""Thunder Wave"",""Slam""]}
+- ""Sparky just learned Surf via HM, forgetting Slam"" → execute_workflow with workflowId=""manage_moves"", parameters={""nuzlocke_id"":""<id>"",""nickname"":""Sparky"",""learn_move"":""Surf"",""forget_move"":""Slam"",""learn_source"":""HM""}
+- ""Bulbasaur learned Razor Leaf from level up"" → execute_workflow with workflowId=""manage_moves"", parameters={""nuzlocke_id"":""<id>"",""nickname"":""Bulbasaur"",""learn_move"":""Razor Leaf"",""learn_source"":""level_up""}
 
 ALWAYS prefer execute_workflow over manual tools (add_to_team, record_encounter) for game events. Workflows enforce rules automatically.
 If the workflow returns errors, inform the user clearly and suggest corrections.

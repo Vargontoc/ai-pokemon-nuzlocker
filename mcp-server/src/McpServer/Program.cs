@@ -192,6 +192,7 @@ builder.Services.AddScoped<IWorkflow, RouteEncounterWorkflow>();
 builder.Services.AddScoped<IWorkflow, ItemObtainedWorkflow>();
 builder.Services.AddScoped<IWorkflow, LevelUpWorkflow>();
 builder.Services.AddScoped<IWorkflow, SetPersonalityWorkflow>();
+builder.Services.AddScoped<IWorkflow, ManageMovesWorkflow>();
 
 // Configure MCP Server
 builder.Services
