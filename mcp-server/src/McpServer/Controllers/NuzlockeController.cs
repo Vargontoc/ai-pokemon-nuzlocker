@@ -5,8 +5,12 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace es.vargontoc.nuzlocke.ai.Controllers;
 
+/// <summary>
+/// Nuzlocke AI advisor — ask questions and receive LLM-generated strategic advice.
+/// </summary>
 [ApiController]
 [Route("nuzlocke")]
+[Produces("application/json")]
 public class NuzlockeController : ControllerBase
 {
     private readonly ILogger<NuzlockeController> _logger;
@@ -16,7 +20,24 @@ public class NuzlockeController : ControllerBase
         _logger = logger;
     }
 
+    /// <summary>
+    /// Dispatch an async advice request. The LLM response is pushed via WebSocket.
+    /// </summary>
+    /// <remarks>
+    /// Returns a `correlationId` immediately. Connect to `ws://host/ws/advice?sessionId=&lt;id&gt;`
+    /// to receive the answer when processing completes.
+    ///
+    /// Example:
+    ///
+    ///     POST /nuzlocke/advice
+    ///     {
+    ///       "question": "Should I use Sparky against Misty?",
+    ///       "sessionId": "my-session-id",
+    ///       "language": "es-ES"
+    ///     }
+    /// </remarks>
     [HttpPost("advice")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
     public Task<IActionResult> GetAdvice(
         [FromBody] AdviceRequest request,
         [FromServices] IAdviceDispatcher dispatcher)
@@ -43,7 +64,24 @@ public class NuzlockeController : ControllerBase
             Ok(new { question = request.Question, correlationId }));
     }
 
+    /// <summary>
+    /// Stream AI advice as Server-Sent Events (SSE).
+    /// </summary>
+    /// <remarks>
+    /// Returns `Content-Type: text/event-stream`. Each chunk is sent as `data: {text}\n\n`.
+    /// The stream ends with `event: end\ndata: [DONE]\n\n`.
+    ///
+    /// Example:
+    ///
+    ///     POST /nuzlocke/advice/stream
+    ///     {
+    ///       "question": "What's the best move against Brock?",
+    ///       "sessionId": "my-session-id",
+    ///       "language": "en-US"
+    ///     }
+    /// </remarks>
     [HttpPost("advice/stream")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task StreamAdvice(
         [FromBody] AdviceRequest request,
         [FromServices] NuzlockeAgent agent,

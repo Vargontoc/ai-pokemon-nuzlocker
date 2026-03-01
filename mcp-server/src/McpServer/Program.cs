@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
+using Microsoft.OpenApi.Models;
 using Microsoft.SemanticKernel;
 using ModelContextProtocol.Server;
 using System.Text.Json;
@@ -23,6 +24,50 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add controllers
 builder.Services.AddControllers();
+
+// Add Swagger/OpenAPI
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "AI Pokemon Nuzlocker API",
+        Version = "v1",
+        Description = """
+            REST API for the AI Pokemon Nuzlocke tracker.
+
+            ## Workflow System
+            The core of the API is the workflow engine (`POST /nuzlocke/workflow`).
+            Each workflow mutates the game state and optionally generates LLM advice.
+
+            **Available workflow IDs:**
+            - `init_nuzlocke` — Start a new Nuzlocke run
+            - `capture_pokemon` — Record a capture
+            - `route_encounter` — Look up encounter data for a route
+            - `item_obtained` — Add items to inventory
+            - `level_up` — Level up a Pokemon (recalculates Gen 1 stats)
+            - `manage_moves` — Register current moves (Vertiente A) or learn a new move with LLM analysis (Vertiente B)
+            - `evolution` — Evolve a Pokemon with LLM analysis of new capabilities
+            - `set_personality` — Change the agent's response personality
+
+            ## Real-time Advice
+            Use `POST /nuzlocke/advice/stream` for Server-Sent Events (SSE) streaming,
+            or `POST /nuzlocke/advice` + WebSocket at `ws://host/ws/advice?sessionId=<id>` for async dispatch.
+            """
+    });
+
+    // Include XML comments from this assembly
+    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    if (File.Exists(xmlPath))
+        options.IncludeXmlComments(xmlPath);
+
+    // Remove [FromServices] DI params from operation descriptions (they're not API params)
+    options.OperationFilter<es.vargontoc.nuzlocke.ai.Configuration.FromServicesOperationFilter>();
+
+    // Add WebSocket and health check endpoints (not controller-based)
+    options.DocumentFilter<es.vargontoc.nuzlocke.ai.Configuration.ExtraEndpointsDocumentFilter>();
+});
 
 // Configure CORS — restrict to web app origin
 builder.Services.AddCors(options =>
@@ -193,6 +238,7 @@ builder.Services.AddScoped<IWorkflow, ItemObtainedWorkflow>();
 builder.Services.AddScoped<IWorkflow, LevelUpWorkflow>();
 builder.Services.AddScoped<IWorkflow, SetPersonalityWorkflow>();
 builder.Services.AddScoped<IWorkflow, ManageMovesWorkflow>();
+builder.Services.AddScoped<IWorkflow, EvolutionWorkflow>();
 
 // Configure MCP Server
 builder.Services
@@ -236,6 +282,15 @@ app.Use(async (context, next) =>
         logger?.LogError(ex, "Unhandled exception processing {Method} {Path}", context.Request.Method, context.Request.Path);
         throw;
     }
+});
+
+// Swagger UI (available in all environments for front-end team access)
+app.UseSwagger();
+app.UseSwaggerUI(options =>
+{
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "AI Pokemon Nuzlocker API v1");
+    options.RoutePrefix = "swagger";
+    options.DocumentTitle = "Nuzlocker API Docs";
 });
 
 // Enable CORS (before routing)

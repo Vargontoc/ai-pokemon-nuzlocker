@@ -104,6 +104,11 @@ public class TeamMember
     public int MaxHP { get; set; }
 
     /// <summary>
+    /// Tipos del pokemon (ej: ["fire", "flying"])
+    /// </summary>
+    public List<string> Types { get; set; } = new();
+
+    /// <summary>
     /// Movimientos actuales
     /// </summary>
     public List<string> Moves { get; set; } = new();
@@ -194,6 +199,11 @@ public class StoredPokemon
     /// Nivel
     /// </summary>
     public int Level { get; set; }
+
+    /// <summary>
+    /// Tipos del pokemon (ej: ["water"])
+    /// </summary>
+    public List<string> Types { get; set; } = new();
 
     /// <summary>
     /// Movimientos

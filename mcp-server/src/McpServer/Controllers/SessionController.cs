@@ -4,11 +4,31 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace es.vargontoc.nuzlocke.ai.Controllers;
 
+/// <summary>
+/// Manage Nuzlocke sessions (create, list, get, delete) and their persistent game data.
+/// </summary>
 [ApiController]
 [Route("nuzlocke/sessions")]
+[Produces("application/json")]
 public class SessionController : ControllerBase
 {
+    /// <summary>
+    /// Create a new Nuzlocke session.
+    /// </summary>
+    /// <remarks>
+    /// Creates a directory-backed session with a unique ID.
+    ///
+    /// Example:
+    ///
+    ///     POST /nuzlocke/sessions
+    ///     {
+    ///       "name": "My FireRed Run",
+    ///       "directoryPath": "C:/saves/firered"
+    ///     }
+    /// </remarks>
     [HttpPost]
+    [ProducesResponseType(typeof(NuzlockeSessionInfo), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> CreateSession(
         [FromBody] CreateSessionRequest request,
         [FromServices] INuzlockeSessionManager sessions)
@@ -24,14 +44,24 @@ public class SessionController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// List all existing Nuzlocke sessions.
+    /// </summary>
     [HttpGet]
+    [ProducesResponseType(typeof(List<NuzlockeSessionInfo>), StatusCodes.Status200OK)]
     public async Task<IActionResult> ListSessions(
         [FromServices] INuzlockeSessionManager sessions)
     {
         return Ok(await sessions.ListSessionsAsync());
     }
 
+    /// <summary>
+    /// Get a specific Nuzlocke session by ID.
+    /// </summary>
+    /// <param name="id">The session ID (GUID string).</param>
     [HttpGet("{id}")]
+    [ProducesResponseType(typeof(NuzlockeSessionInfo), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetSession(
         string id,
         [FromServices] INuzlockeSessionManager sessions)
@@ -40,7 +70,13 @@ public class SessionController : ControllerBase
         return s == null ? NotFound() : Ok(s);
     }
 
+    /// <summary>
+    /// Delete a Nuzlocke session and its associated data.
+    /// </summary>
+    /// <param name="id">The session ID (GUID string).</param>
     [HttpDelete("{id}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> DeleteSession(
         string id,
         [FromServices] INuzlockeSessionManager sessions)
@@ -49,7 +85,13 @@ public class SessionController : ControllerBase
         return ok ? NoContent() : NotFound();
     }
 
+    /// <summary>
+    /// Load the full game data for a session (game state, battle context, agent memory).
+    /// </summary>
+    /// <param name="id">The session ID.</param>
     [HttpGet("{id}/data")]
+    [ProducesResponseType(typeof(NuzlockeFileData), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetSessionData(
         string id,
         [FromServices] INuzlockeSessionManager sessions)
@@ -65,7 +107,14 @@ public class SessionController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Persist updated game data for a session.
+    /// </summary>
+    /// <param name="id">The session ID.</param>
+    /// <param name="fileData">Full game data snapshot to save.</param>
     [HttpPost("{id}/data")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> SaveSessionData(
         string id,
         [FromBody] NuzlockeFileData fileData,
