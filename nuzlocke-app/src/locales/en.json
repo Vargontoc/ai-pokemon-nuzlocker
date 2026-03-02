@@ -2,11 +2,49 @@
     "dashboard": {
         "title": "Nuzlockes Dashboard",
         "activeNuzlockes": "Active and Completed Nuzlockes",
-        "noNuzlockesFound": "No Nuzlocke sessions found. Start a new one to begin your adventure!"
+        "noNuzlockesFound": "No Nuzlocke sessions found. Start a new one to begin your adventure!",
+        "newNuzlocke": "New Nuzlocke",
+        "startNuzlocke": "Start Nuzlocke",
+        "createSession": "Create Session",
+        "creating": "Creating...",
+        "cancel": "Cancel",
+        "form": {
+            "nameLabel": "Run Name",
+            "namePlaceholder": "e.g. FireRed Gen 1",
+            "pathLabel": "Emulator/Tracker save path",
+            "pathPlaceholder": "C:/saves/firered"
+        },
+        "alerts": {
+            "loadError": "Failed to load Nuzlocke sessions.",
+            "createSuccess": "Nuzlocke session created successfully!",
+            "createError": "An error occurred while creating the run.",
+            "deleteSuccess": "Session deleted successfully.",
+            "deleteError": "Server error while deleting the session."
+        }
     },
     "offline": {
         "title": "Server Disconnected",
         "description": "We lost connection to the Nuzlocke AI Server. Make sure the backend is running and you have internet access.",
         "reconnecting": "Attempting to reconnect..."
+    },
+    "status": {
+        "active": "Active",
+        "completed": "Completed",
+        "failed": "Game Over",
+        "archived": "Archived"
+    },
+    "card": {
+        "unnamed": "Unnamed Adventure",
+        "startedAt": "Started on",
+        "unknownDate": "Unknown date",
+        "enter": "Enter Game",
+        "delete": "Delete session"
+    },
+    "deleteModal": {
+        "title": "Delete Run?",
+        "warning": "You are about to permanently delete the session",
+        "undone": "This action cannot be undone.",
+        "confirm": "Yes, delete",
+        "cancel": "Cancel"
     }
 }

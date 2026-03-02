@@ -1,10 +1,21 @@
 import api from '../config/api'
 
+// Vite's erasableSyntaxOnly requires value enums to be const objects
+export const NuzlockeStatus = {
+    Active: 0,
+    Completed: 1,
+    Failed: 2,
+    Archived: 3
+} as const;
+
+export type NuzlockeStatusType = typeof NuzlockeStatus[keyof typeof NuzlockeStatus];
+
 export interface NuzlockeSessionInfo {
     id: string
     name: string
     path: string
     createdAt: string
+    status?: NuzlockeStatusType
 }
 
 export interface CreateSessionRequest {

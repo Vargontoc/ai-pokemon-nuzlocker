@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import DashboardView from '../../views/DashboardView.vue'
-import { nuzlockeService } from '../../services/nuzlockeService'
+import { nuzlockeService, NuzlockeStatus } from '../../services/nuzlockeService'
 import router from '../../router'
 import i18n from '../../config/i18n'
 
@@ -18,19 +18,23 @@ vi.mock('vue-router', async () => {
 })
 
 // Mocking dependencies explicitly instead of nested calls inside components
-vi.mock('../../services/nuzlockeService', () => ({
-    nuzlockeService: {
-        getSessions: vi.fn(),
-        createSession: vi.fn(),
-        deleteSession: vi.fn()
+vi.mock('../../services/nuzlockeService', async () => {
+    const actual = await vi.importActual('../../services/nuzlockeService') as any
+    return {
+        ...actual,
+        nuzlockeService: {
+            getSessions: vi.fn(),
+            createSession: vi.fn(),
+            deleteSession: vi.fn()
+        }
     }
-}))
+})
 
 describe('DashboardView.vue', () => {
 
     const fakeSessions = [
-        { id: '1', name: 'Pokemon Rojo Fuego', path: 'C:/games/rf', createdAt: new Date().toISOString() },
-        { id: '2', name: 'Pokemon Esmeralda', path: 'C:/games/es', createdAt: new Date().toISOString() }
+        { id: '1', name: 'Pokemon Rojo Fuego', path: 'C:/games/rf', createdAt: new Date().toISOString(), status: NuzlockeStatus.Active },
+        { id: '2', name: 'Pokemon Esmeralda', path: 'C:/games/es', createdAt: new Date().toISOString(), status: NuzlockeStatus.Completed }
     ]
 
     beforeEach(() => {

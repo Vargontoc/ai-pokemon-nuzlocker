@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { RouterView } from 'vue-router'
 
 const { isDark, toggleTheme } = useTheme()
-const { locale } = useI18n()
+const { locale } = useI18n({ useScope: 'global' })
 
 const toggleLanguage = () => {
   locale.value = locale.value === 'es' ? 'en' : 'es'

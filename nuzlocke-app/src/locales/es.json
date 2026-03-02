@@ -2,11 +2,49 @@
     "dashboard": {
         "title": "Panel de Nuzlockes",
         "activeNuzlockes": "Nuzlockes Activos y Completados",
-        "noNuzlockesFound": "No se encontraron sesiones de Nuzlocke. ¡Inicia una nueva para comenzar tu aventura!"
+        "noNuzlockesFound": "No se encontraron sesiones de Nuzlocke. ¡Inicia una nueva para comenzar tu aventura!",
+        "newNuzlocke": "Nuevo Nuzlocke",
+        "startNuzlocke": "Empezar Nuzlocke",
+        "createSession": "Crear Sesión",
+        "creating": "Creando...",
+        "cancel": "Cancelar",
+        "form": {
+            "nameLabel": "Nombre de la partida",
+            "namePlaceholder": "Ej. FireRed Gen 1",
+            "pathLabel": "Ruta del emulador/Cagapuntos",
+            "pathPlaceholder": "C:/saves/firered"
+        },
+        "alerts": {
+            "loadError": "No se pudieron cargar las sesiones de Nuzlocke.",
+            "createSuccess": "¡Sesión Nuzlocke creada con éxito!",
+            "createError": "Ocurrió un error al crear la nueva partida.",
+            "deleteSuccess": "La partida se ha eliminado.",
+            "deleteError": "Error del servidor al intentar borrar la sesión."
+        }
     },
     "offline": {
         "title": "Servidor Desconectado",
         "description": "Hemos perdido la conexión con el Servidor AI de Nuzlocke. Asegúrate de que el backend esté en ejecución y tengas acceso a internet.",
         "reconnecting": "Intentando reconectar..."
+    },
+    "status": {
+        "active": "Activo",
+        "completed": "Finalizado",
+        "failed": "Game Over",
+        "archived": "Abandonado"
+    },
+    "card": {
+        "unnamed": "Aventura sin nombre",
+        "startedAt": "Iniciado el",
+        "unknownDate": "Fecha desconocida",
+        "enter": "Entrar a Jugar",
+        "delete": "Eliminar partida"
+    },
+    "deleteModal": {
+        "title": "¿Borrar Partida?",
+        "warning": "Estás a punto de eliminar permanentemente la sesión",
+        "undone": "Esta acción no se puede deshacer.",
+        "confirm": "Sí, eliminar",
+        "cancel": "Cancelar"
     }
 }
