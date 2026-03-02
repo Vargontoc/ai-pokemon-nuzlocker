@@ -130,4 +130,52 @@ public class SessionController : ControllerBase
             return NotFound();
         }
     }
+
+    /// <summary>
+    /// Update the status of a Nuzlocke session.
+    /// </summary>
+    /// <remarks>
+    /// Use this endpoint when the player explicitly marks a run as finished, lost or abandoned.
+    /// The status is stored in the session registry and returned on every list/get call
+    /// without loading the full game state.
+    ///
+    /// Valid status values: `Active`, `Finished`, `GameOver`, `Abandoned`
+    ///
+    /// Example — mark a run as completed after beating the Elite Four:
+    ///
+    ///     PATCH /nuzlocke/sessions/abc123/status
+    ///     {
+    ///       "status": "Finished"
+    ///     }
+    ///
+    /// Example — mark a run as lost after a blackout:
+    ///
+    ///     PATCH /nuzlocke/sessions/abc123/status
+    ///     {
+    ///       "status": "GameOver"
+    ///     }
+    /// </remarks>
+    /// <param name="id">The session ID.</param>
+    /// <param name="request">New status value.</param>
+    [HttpPatch("{id}/status")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateStatus(
+        string id,
+        [FromBody] UpdateStatusRequest request,
+        [FromServices] INuzlockeSessionManager sessions)
+    {
+        if (!Enum.TryParse<NuzlockeStatus>(request.Status, ignoreCase: true, out var status))
+        {
+            var valid = string.Join(", ", Enum.GetNames<NuzlockeStatus>());
+            return BadRequest(new { error = $"Invalid status '{request.Status}'. Valid values: {valid}" });
+        }
+
+        var updated = await sessions.UpdateStatusAsync(id, status);
+        return updated ? NoContent() : NotFound();
+    }
 }
+
+/// <summary>Request body for PATCH /nuzlocke/sessions/{id}/status.</summary>
+public record UpdateStatusRequest(string Status);

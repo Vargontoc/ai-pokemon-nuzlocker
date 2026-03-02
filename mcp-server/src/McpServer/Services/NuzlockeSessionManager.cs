@@ -153,5 +153,39 @@ public class NuzlockeSessionManager : INuzlockeSessionManager
             await File.WriteAllTextAsync(filePath, JsonSerializer.Serialize(data, _writeOptions));
         }
         finally { sem.Release(); }
+
+        // Sync lightweight metadata back to the registry (no extra file reads on list)
+        await _registryLock.WaitAsync();
+        try
+        {
+            var reg = await ReadRegistryAsync();
+            var entry = reg.Sessions.FirstOrDefault(x => x.Id == sessionId);
+            if (entry != null)
+            {
+                entry.LastUpdated = DateTime.UtcNow;
+                entry.Generation = data.GameState.Generation;
+                entry.LockeType = data.GameState.LockeType;
+                await WriteRegistryAsync(reg);
+            }
+        }
+        finally { _registryLock.Release(); }
+    }
+
+    public async Task<bool> UpdateStatusAsync(string sessionId, NuzlockeStatus status)
+    {
+        await _registryLock.WaitAsync();
+        try
+        {
+            var reg = await ReadRegistryAsync();
+            var entry = reg.Sessions.FirstOrDefault(x => x.Id == sessionId);
+            if (entry == null) return false;
+
+            entry.Status = status;
+            entry.LastUpdated = DateTime.UtcNow;
+            await WriteRegistryAsync(reg);
+            _logger.LogInformation("Session {SessionId} status updated to {Status}", sessionId, status);
+            return true;
+        }
+        finally { _registryLock.Release(); }
     }
 }

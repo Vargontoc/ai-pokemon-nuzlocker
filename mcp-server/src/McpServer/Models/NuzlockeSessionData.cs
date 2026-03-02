@@ -8,6 +8,18 @@ public class NuzlockeSessionInfo
     public string Name { get; set; } = string.Empty;
     public string Path { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Estado actual de la partida.</summary>
+    public NuzlockeStatus Status { get; set; } = NuzlockeStatus.Active;
+
+    /// <summary>Última vez que se guardó el estado de la partida.</summary>
+    public DateTime LastUpdated { get; set; } = DateTime.UtcNow;
+
+    /// <summary>Generación del juego (sincronizado desde NuzlockeState).</summary>
+    public int Generation { get; set; } = 1;
+
+    /// <summary>Variante de Nuzlocke (sincronizado desde NuzlockeState).</summary>
+    public string LockeType { get; set; } = "standard";
 }
 
 public class NuzlockeFileData

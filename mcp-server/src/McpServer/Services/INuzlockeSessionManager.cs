@@ -10,4 +10,10 @@ public interface INuzlockeSessionManager
     Task<bool> DeleteSessionAsync(string sessionId);
     Task<NuzlockeFileData> LoadSessionDataAsync(string sessionId);
     Task SaveSessionDataAsync(string sessionId, NuzlockeFileData data);
+
+    /// <summary>
+    /// Update only the status of a session (e.g. Active → Finished, GameOver, Abandoned).
+    /// Returns false if the session does not exist.
+    /// </summary>
+    Task<bool> UpdateStatusAsync(string sessionId, NuzlockeStatus status);
 }
