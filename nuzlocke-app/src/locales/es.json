@@ -1,0 +1,12 @@
+{
+    "dashboard": {
+        "title": "Panel de Nuzlockes",
+        "activeNuzlockes": "Nuzlockes Activos y Completados",
+        "noNuzlockesFound": "No se encontraron sesiones de Nuzlocke. ¡Inicia una nueva para comenzar tu aventura!"
+    },
+    "offline": {
+        "title": "Servidor Desconectado",
+        "description": "Hemos perdido la conexión con el Servidor AI de Nuzlocke. Asegúrate de que el backend esté en ejecución y tengas acceso a internet.",
+        "reconnecting": "Intentando reconectar..."
+    }
+}

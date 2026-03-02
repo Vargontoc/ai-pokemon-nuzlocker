@@ -9,7 +9,7 @@ Proyecto componente web bajo framework Vue 3 + TypeScript + TailwindCSS. Es un a
 - REST API
 
 # Documentación 
-- API Doc:  http://localhost:8000/swagger 
+- API Doc:  http://localhost:5000/swagger 
 
 # Views: 
 - Dashboard Nuzlockes:
