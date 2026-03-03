@@ -10,6 +10,11 @@ const router = createRouter({
             component: DashboardView
         },
         {
+            path: '/nuzlocke/:id',
+            name: 'nuzlocke',
+            component: () => import('../views/NuzlockeView.vue')
+        },
+        {
             path: '/offline',
             name: 'offline',
             component: () => import('../views/OfflineErrorView.vue')

@@ -1,0 +1,732 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "AI Pokemon Nuzlocker API",
+    "description": "REST API for the AI Pokemon Nuzlocke tracker.\n\n## Workflow System\nThe core of the API is the workflow engine (`POST /nuzlocke/workflow`).\nEach workflow mutates the game state and optionally generates LLM advice.\n\n**Available workflow IDs:**\n- `init_nuzlocke` — Start a new Nuzlocke run\n- `capture_pokemon` — Record a capture\n- `route_encounter` — Look up encounter data for a route\n- `item_obtained` — Add items to inventory\n- `level_up` — Level up a Pokemon (recalculates Gen 1 stats)\n- `manage_moves` — Register current moves (Vertiente A) or learn a new move with LLM analysis (Vertiente B)\n- `evolution` — Evolve a Pokemon with LLM analysis of new capabilities\n- `set_personality` — Change the agent's response personality\n\n## Real-time Advice\nUse `POST /nuzlocke/advice/stream` for Server-Sent Events (SSE) streaming,\nor `POST /nuzlocke/advice` + WebSocket at `ws://host/ws/advice?nuzlockeId=<id>` for async dispatch.",
+    "version": "v1"
+  },
+  "paths": {
+    "/agent/advice": {
+      "post": {
+        "tags": [
+          "Agent"
+        ],
+        "summary": "Ask the PokeAPI agent a general Pokemon question.",
+        "description": "The agent has access to PokeAPI tools and can answer questions about moves,\r\ntypes, abilities, base stats, and more.\r\n            \r\nExample:\r\n            \r\n    POST /agent/advice\r\n    {\r\n      \"question\": \"What are the weaknesses of a Water/Ice type?\",\r\n      \"language\": \"en-US\"\r\n    }",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdviceRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdviceRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdviceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Returns a plain text confirmation that the server is up.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/nuzlocke": {
+      "post": {
+        "tags": [
+          "Nuzlocke"
+        ],
+        "summary": "Crear una nueva partida Nuzlocke.",
+        "description": "Crea una partida con UUID, estructura de directorios y metadata .nuzlocke.\r\nLa partida queda en estado Building hasta la primera conexión WebSocket (init_nuzlocke).\r\n            \r\nEjemplo:\r\n            \r\n    POST /nuzlocke\r\n    {\r\n      \"name\": \"Mi FireRed Run\",\r\n      \"lockeType\": \"Standard\",\r\n      \"generation\": 1,\r\n      \"descripcion\": \"Intento serio\"\r\n    }",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSessionRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSessionRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSessionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NuzlockeMetadata"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Nuzlocke"
+        ],
+        "summary": "Listar todas las partidas Nuzlocke existentes.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NuzlockeMetadata"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/nuzlocke/{id}": {
+      "get": {
+        "tags": [
+          "Nuzlocke"
+        ],
+        "summary": "Obtener una partida Nuzlocke por ID.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "UUID de la partida.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NuzlockeMetadata"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Nuzlocke"
+        ],
+        "summary": "Eliminar una partida Nuzlocke y toda su estructura de datos.",
+        "description": "Borra el registro de la base de datos y elimina el directorio de archivos. Operación irreversible.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "UUID de la partida.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/nuzlocke/{id}/state": {
+      "put": {
+        "tags": [
+          "Nuzlocke"
+        ],
+        "summary": "Actualizar el estado de una partida Nuzlocke.",
+        "description": "Único campo modificable por el usuario. Valores válidos: Active, Finished, GameOver, Abandoned\r\n            \r\n    PUT /nuzlocke/abc123/state\r\n    { \"status\": \"Finished\" }",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "UUID de la partida.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateNuzlockeStateRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateNuzlockeStateRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateNuzlockeStateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/nuzlocke/workflow": {
+      "post": {
+        "tags": [
+          "Workflow"
+        ],
+        "summary": "Execute a gameplay workflow that mutates game state and optionally generates LLM advice.",
+        "description": "The `parameters` field is a flexible key-value map. Required keys vary by workflow:\r\n            \r\n| workflowId | Required params | Optional params |\r\n|---|---|---|\r\n| `init_nuzlocke` | `player_name`, `game_version`, `generation` | — |\r\n| `capture_pokemon` | `nuzlocke_id`, `species`, `nickname`, `location`, `level` | — |\r\n| `route_encounter` | `nuzlocke_id`, `route_name` | — |\r\n| `item_obtained` | `nuzlocke_id`, `item_name`, `quantity`, `category`, `location` | — |\r\n| `level_up` | `nuzlocke_id`, `nickname` | `new_level` (auto-increments if omitted) |\r\n| `manage_moves` (A) | `nuzlocke_id`, `nickname`, `moves` (array 1–4) | — |\r\n| `manage_moves` (B) | `nuzlocke_id`, `nickname`, `learn_move` | `forget_move`, `learn_source` |\r\n| `evolution` | `nuzlocke_id`, `nickname`, `evolved_species` | `evolution_trigger` |\r\n| `set_personality` | `nuzlocke_id`, `personality` | — |\r\n            \r\nExample — capture a Pikachu:\r\n            \r\n    POST /nuzlocke/workflow\r\n    {\r\n      \"workflowId\": \"capture_pokemon\",\r\n      \"nuzlockeId\": \"my-session-id\",\r\n      \"language\": \"es-ES\",\r\n      \"parameters\": {\r\n        \"nuzlocke_id\": \"my-session-id\",\r\n        \"species\": \"pikachu\",\r\n        \"nickname\": \"Sparky\",\r\n        \"location\": \"Viridian Forest\",\r\n        \"level\": 5\r\n      }\r\n    }\r\n            \r\nExample — evolve Pikachu into Raichu:\r\n            \r\n    POST /nuzlocke/workflow\r\n    {\r\n      \"workflowId\": \"evolution\",\r\n      \"nuzlockeId\": \"my-session-id\",\r\n      \"parameters\": {\r\n        \"nuzlocke_id\": \"my-session-id\",\r\n        \"nickname\": \"Sparky\",\r\n        \"evolved_species\": \"Raichu\",\r\n        \"evolution_trigger\": \"stone\"\r\n      }\r\n    }",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowResult"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/nuzlocke/workflows": {
+      "get": {
+        "tags": [
+          "Workflow"
+        ],
+        "summary": "List all workflow IDs registered in the engine.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/ws/advice": {
+      "get": {
+        "tags": [
+          "WebSocket"
+        ],
+        "summary": "Connect to real-time advice stream (WebSocket)",
+        "description": "Establishes a WebSocket connection keyed to a Nuzlocke run.\nOne connection per nuzlocke — any previous connection for the same ID is replaced.\n\n**Pre-requisite:** The nuzlocke must exist (created via `POST /nuzlocke/sessions`).\n\n**Auto-initialization:** If the game state has never been set up, the server\ninitializes it automatically using the generation and locke type stored in the session.\n\n**On connect, the server immediately sends a `connected` message:**\n```json\n{\n  \"type\": \"connected\",\n  \"nuzlockeId\": \"uuid\",\n  \"initialized\": false,\n  \"generation\": 1,\n  \"lockeType\": \"standard\"\n}\n```\n`initialized: true` means the game state was auto-initialized in this connection.\n\n**Subsequent server-push messages:**\n\n| type | When |\n|---|---|\n| `workflow_event` | After any `POST /nuzlocke/workflow` completes |\n| `advice_start` | LLM advice generation begins |\n| `advice_chunk` | Streaming token from the LLM |\n| `advice_end` | Full advice text ready |\n| `advice_error` | LLM call failed |\n\n**Flow:**\n1. `POST /nuzlocke/sessions` → get `nuzlockeId`\n2. `GET ws://host/ws/advice?nuzlockeId=<id>` → receive `connected`\n3. `POST /nuzlocke/workflow` → receive `workflow_event` + async advice stream",
+        "parameters": [
+          {
+            "name": "nuzlockeId",
+            "in": "query",
+            "description": "The Nuzlocke session ID obtained from POST /nuzlocke/sessions.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "101": {
+            "description": "Switching Protocols — WebSocket connection established. Server sends `connected` message immediately."
+          },
+          "400": {
+            "description": "Bad request — not a WebSocket upgrade request, or missing `nuzlockeId`."
+          },
+          "404": {
+            "description": "Nuzlocke not found — create it first via POST /nuzlocke/sessions."
+          },
+          "500": {
+            "description": "Failed to load or initialize the nuzlocke game state."
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Full health report (all checks)",
+        "description": "Returns status of all registered health checks: SQLite database and PokeAPI reachability.",
+        "responses": {
+          "200": {
+            "description": "Health status JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "Healthy"
+                    },
+                    "checks": {
+                      "type": "array"
+                    },
+                    "totalDuration": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Readiness check (db + external deps)",
+        "description": "Checks only `ready`-tagged checks: database and PokeAPI. Use for Kubernetes readiness probes.",
+        "responses": {
+          "200": {
+            "description": "Health status JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "Healthy"
+                    },
+                    "checks": {
+                      "type": "array"
+                    },
+                    "totalDuration": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/live": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Liveness check (process alive)",
+        "description": "Always returns Healthy if the process is running. No external checks. Use for Kubernetes liveness probes.",
+        "responses": {
+          "200": {
+            "description": "Health status JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "Healthy"
+                    },
+                    "checks": {
+                      "type": "array"
+                    },
+                    "totalDuration": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AdviceRequest": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string",
+            "nullable": true
+          },
+          "nuzlockeId": {
+            "type": "string",
+            "nullable": true
+          },
+          "language": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateSessionRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "lockeType": {
+            "$ref": "#/components/schemas/LockeType"
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "descripcion": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "LockeType": {
+        "enum": [
+          0,
+          1
+        ],
+        "type": "integer",
+        "description": "Tipo de reglas del Nuzlocke.",
+        "format": "int32"
+      },
+      "NuzlockeMetadata": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "UUID único de la partida (PK).",
+            "nullable": true
+          },
+          "name": {
+            "type": "string",
+            "description": "Nombre descriptivo de la partida (max 50 caracteres).",
+            "nullable": true
+          },
+          "descripcion": {
+            "type": "string",
+            "description": "Descripción opcional de la partida (max 100 caracteres).",
+            "nullable": true
+          },
+          "generation": {
+            "type": "integer",
+            "description": "Generación del juego (1 por ahora).",
+            "format": "int32"
+          },
+          "lockeType": {
+            "$ref": "#/components/schemas/LockeType"
+          },
+          "isInitialized": {
+            "type": "boolean",
+            "description": "True una vez que InitNuzlockeWorkflow ha corrido con éxito para esta partida.\r\nFalse significa que la sesión fue creada pero todavía no inicializada."
+          },
+          "status": {
+            "$ref": "#/components/schemas/NuzlockeStatus"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "Fecha de creación de la partida.",
+            "format": "date-time"
+          },
+          "lastUpdated": {
+            "type": "string",
+            "description": "Última vez que se actualizó la metadata.",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false,
+        "description": "Metadata de una partida Nuzlocke. Se persiste en SQLite y también como copia en el fichero .nuzlocke."
+      },
+      "NuzlockeStatus": {
+        "enum": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "type": "integer",
+        "description": "Estado de una partida Nuzlocke.",
+        "format": "int32"
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": { }
+      },
+      "StateMutation": {
+        "required": [
+          "description",
+          "type"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Describes a state change that was applied"
+      },
+      "UpdateNuzlockeStateRequest": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/NuzlockeStatus"
+          }
+        },
+        "additionalProperties": false
+      },
+      "WorkflowParameters": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Generic parameter bag backed by Dictionary<string, JsonElement>.\r\nEach workflow reads what it needs via typed accessors."
+      },
+      "WorkflowRequest": {
+        "required": [
+          "nuzlockeId",
+          "workflowId"
+        ],
+        "type": "object",
+        "properties": {
+          "workflowId": {
+            "type": "string",
+            "nullable": true
+          },
+          "nuzlockeId": {
+            "type": "string",
+            "nullable": true
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/WorkflowParameters"
+          },
+          "language": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Incoming request from the web app"
+      },
+      "WorkflowResult": {
+        "required": [
+          "workflowId"
+        ],
+        "type": "object",
+        "properties": {
+          "workflowId": {
+            "type": "string",
+            "nullable": true
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "mutations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StateMutation"
+            },
+            "description": "Deterministic state changes that were applied",
+            "nullable": true
+          },
+          "correlationId": {
+            "type": "string",
+            "description": "Correlation ID linking this HTTP response to the async WebSocket advice stream.\r\nNull when advice was generated synchronously or skipped.",
+            "nullable": true
+          },
+          "advice": {
+            "type": "string",
+            "description": "LLM-generated strategic advice",
+            "nullable": true
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            },
+            "description": "Fetched data for the frontend (e.g., pokemon info, item info)",
+            "nullable": true
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Validation or execution errors",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "Structured result from a workflow execution"
+      }
+    }
+  }
+}

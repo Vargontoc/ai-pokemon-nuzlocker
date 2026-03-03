@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { toast } from 'vue3-toastify'
 import 'vue3-toastify/dist/index.css'
@@ -8,8 +9,9 @@ import DeleteConfirmModal from '../components/common/DeleteConfirmModal.vue'
 import { nuzlockeService, type NuzlockeSessionInfo } from '../services/nuzlockeService'
 
 const { t } = useI18n({ useScope: 'global' })
+const router = useRouter()
 
-const sessions = ref<NuzlockeSessionInfo[]>([])
+const nuzlockes = ref<NuzlockeSessionInfo[]>([])
 const isLoading = ref(true)
 const showCreateModal = ref(false)
 
@@ -18,14 +20,14 @@ const showDeleteConfirmModal = ref(false)
 const sessionToDelete = ref<string | null>(null)
 
 // Formularios
-const newSessionName = ref('')
-const newSessionPath = ref('')
+const newNuzlockeName = ref('')
+const newDescriptionNuzlocke = ref('')
 const isCreating = ref(false)
 
 const loadSessions = async () => {
   isLoading.value = true
   try {
-    sessions.value = await nuzlockeService.getSessions()
+    nuzlockes.value = await nuzlockeService.getSessions()
   } catch (error) {
     console.error("Failed to load sessions:", error)
     toast.error(t('dashboard.alerts.loadError'))
@@ -35,17 +37,17 @@ const loadSessions = async () => {
 }
 
 const handleCreate = async () => {
-  if (!newSessionName.value || !newSessionPath.value) return
+  if (!newNuzlockeName.value || !newDescriptionNuzlocke.value) return
   isCreating.value = true
   try {
     const newSession = await nuzlockeService.createSession({
-      name: newSessionName.value,
-      directoryPath: newSessionPath.value
+      name: newNuzlockeName.value,
+      directoryPath: newDescriptionNuzlocke.value
     })
-    sessions.value.push(newSession)
+    nuzlockes.value.push(newSession)
     showCreateModal.value = false
-    newSessionName.value = ''
-    newSessionPath.value = ''
+    newNuzlockeName.value = ''
+    newDescriptionNuzlocke.value = ''
     toast.success(t('dashboard.alerts.createSuccess'))
   } catch (error) {
     console.error("Failed to create session:", error)
@@ -65,7 +67,7 @@ const handleDelete = async () => {
   if(!sessionToDelete.value) return
   try {
     await nuzlockeService.deleteSession(sessionToDelete.value)
-    sessions.value = sessions.value.filter(s => s.id !== sessionToDelete.value)
+    nuzlockes.value = nuzlockes.value.filter(s => s.id !== sessionToDelete.value)
     toast.info(t('dashboard.alerts.deleteSuccess'))
   } catch (error) {
     console.error("Failed to delete session:", error)
@@ -77,9 +79,7 @@ const handleDelete = async () => {
 }
 
 const handleEnter = (id: string) => {
-  console.log('Navegando al nuzlocke:', id)
-  // TODO: Sprint posterior. Navegar a /nuzlocke/:id
-  alert('Se conectará al dashboard del Nuzlocke: ' + id)
+  router.push({ name: 'nuzlocke', params: { id } })
 }
 
 onMounted(() => {
@@ -105,7 +105,7 @@ onMounted(() => {
     </div>
 
     <!-- Empty State -->
-    <div v-else-if="sessions.length === 0" class="text-center py-20 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
+    <div v-else-if="nuzlockes.length === 0" class="text-center py-20 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
       <h2 class="text-2xl font-semibold mb-2 text-gray-500 dark:text-gray-400">
         {{ t('dashboard.noNuzlockesFound') }}
       </h2>
@@ -120,7 +120,7 @@ onMounted(() => {
     <!-- Listado -->
     <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
       <NuzlockeCard 
-        v-for="session in sessions" 
+        v-for="session in nuzlockes" 
         :key="session.id"
         v-bind="session"
         @enter="handleEnter"
@@ -137,7 +137,9 @@ onMounted(() => {
           <div>
             <label class="block text-sm font-medium mb-1">{{ t('dashboard.form.nameLabel') }}</label>
             <input 
-              v-model="newSessionName" 
+              v-model="newNuzlockeName"
+              min="1"
+              max="50"
               type="text" 
               class="w-full border rounded px-3 py-2 bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
               :placeholder="t('dashboard.form.namePlaceholder')"
@@ -146,7 +148,8 @@ onMounted(() => {
           <div>
             <label class="block text-sm font-medium mb-1">{{ t('dashboard.form.pathLabel') }}</label>
             <input 
-              v-model="newSessionPath" 
+              v-model="newDescriptionNuzlocke"
+              max="100"
               type="text" 
               class="w-full border rounded px-3 py-2 bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
               :placeholder="t('dashboard.form.pathPlaceholder')"
@@ -163,7 +166,7 @@ onMounted(() => {
           </button>
           <button 
             @click="handleCreate"
-            :disabled="!newSessionName || !newSessionPath || isCreating"
+            :disabled="!newNuzlockeName || !newDescriptionNuzlocke || isCreating"
             class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded shadow transition"
           >
             {{ isCreating ? t('dashboard.creating') : t('dashboard.createSession') }}
@@ -175,7 +178,7 @@ onMounted(() => {
     <!-- Confirmación Borrado Modal -->
     <DeleteConfirmModal 
       v-if="showDeleteConfirmModal"
-      :item-name="sessions.find(s => s.id === sessionToDelete)?.name"
+      :item-name="nuzlockes.find(s => s.id === sessionToDelete)?.name"
       @confirm="handleDelete"
       @cancel="showDeleteConfirmModal = false; sessionToDelete = null;"
     />

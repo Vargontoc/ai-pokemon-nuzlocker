@@ -6,7 +6,7 @@ import { NuzlockeStatus, type NuzlockeStatusType } from '../../services/nuzlocke
 const props = defineProps<{
   id: string
   name: string
-  path: string
+  description?: string
   createdAt: string
   status?: NuzlockeStatusType
 }>()
@@ -66,8 +66,7 @@ const onDelete = () => emit('delete', props.id)
       <!-- Los iconos se enmarcan mejor con espaciado -->
       <div class="text-sm text-gray-600 dark:text-gray-400 mb-6 space-y-2 font-medium">
         <p class="flex items-center">
-            <span class="mr-2">📁</span>
-            <span class="truncate">{{ path }}</span>
+            <span class="truncate">{{ description }}</span>
         </p>
         <p class="flex items-center">
             <span class="mr-2">📅</span>
