@@ -32,7 +32,7 @@ public class WorkflowBaseDeterministicTests
         var result = await workflow.ExecuteDeterministicAsync(new WorkflowRequest
         {
             WorkflowId = "test",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = new WorkflowParameters() // missing "name"
         });
 
@@ -53,7 +53,7 @@ public class WorkflowBaseDeterministicTests
         var result = await workflow.ExecuteDeterministicAsync(new WorkflowRequest
         {
             WorkflowId = "test",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = new WorkflowParameters(dict)
         });
 
@@ -81,7 +81,7 @@ public class WorkflowBaseDeterministicTests
         var result = await workflow.ExecuteDeterministicAsync(new WorkflowRequest
         {
             WorkflowId = "test",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = new WorkflowParameters(dict)
         });
 
@@ -102,7 +102,7 @@ public class WorkflowBaseDeterministicTests
         var result = await workflow.ExecuteDeterministicAsync(new WorkflowRequest
         {
             WorkflowId = "test",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = new WorkflowParameters(dict)
         });
 
@@ -126,7 +126,7 @@ public class WorkflowBaseDeterministicTests
         var result = await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "test",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = new WorkflowParameters(dict)
         });
 

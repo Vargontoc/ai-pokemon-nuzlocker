@@ -16,14 +16,14 @@ public class RouteEncounterWorkflowTests
     private readonly Mock<IStateManager> _mockState = new();
     private readonly Mock<IPokeApiConnector> _mockPokeApi = new();
     private readonly Mock<IAiProvider> _mockAi = new();
-    private readonly Mock<INuzlockeFileManager> _mockFileManager = new();
+    private readonly Mock<INuzlockeRepository> _mockRepository = new();
     private readonly Mock<ILogger<RouteEncounterWorkflow>> _mockLogger = new();
 
     private NuzlockeState _currentState = new() { Generation = 1, LockeType = "standard" };
 
     public RouteEncounterWorkflowTests()
     {
-        _mockFileManager.Setup(f => f.GetNuzlockePathAsync("test_nuzlocke_2026-02-15"))
+        _mockRepository.Setup(f => f.GetNuzlockePathAsync("test_nuzlocke_2026-02-15"))
             .ReturnsAsync("/tmp/nuzlockes/test_nuzlocke_2026-02-15");
 
         _mockState.Setup(s => s.GetStateAsync(It.IsAny<string>()))
@@ -63,7 +63,7 @@ public class RouteEncounterWorkflowTests
     }
 
     private RouteEncounterWorkflow CreateWorkflow() =>
-        new(_mockState.Object, _mockPokeApi.Object, _mockAi.Object, _mockFileManager.Object, _mockLogger.Object);
+        new(_mockState.Object, _mockPokeApi.Object, _mockAi.Object, _mockRepository.Object, _mockLogger.Object);
 
     private static WorkflowParameters MakeParams(object obj)
     {
@@ -110,14 +110,14 @@ public class RouteEncounterWorkflowTests
     [Fact]
     public async Task Execute_NuzlockeNotFound_ReturnsFailure()
     {
-        _mockFileManager.Setup(f => f.GetNuzlockePathAsync(It.IsAny<string>()))
+        _mockRepository.Setup(f => f.GetNuzlockePathAsync(It.IsAny<string>()))
             .ReturnsAsync((string?)null);
 
         var workflow = CreateWorkflow();
         var result = await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "route_encounter",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = DefaultParams()
         });
 
@@ -150,7 +150,7 @@ public class RouteEncounterWorkflowTests
         var result = await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "route_encounter",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = DefaultParams()
         });
 
@@ -167,7 +167,7 @@ public class RouteEncounterWorkflowTests
         await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "route_encounter",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = DefaultParams()
         });
 
@@ -182,7 +182,7 @@ public class RouteEncounterWorkflowTests
         var result = await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "route_encounter",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = MakeParams(new
             {
                 nuzlocke_id = "test_nuzlocke_2026-02-15",
@@ -205,7 +205,7 @@ public class RouteEncounterWorkflowTests
         var result = await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "route_encounter",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = MakeParams(new
             {
                 nuzlocke_id = "test_nuzlocke_2026-02-15",
@@ -231,7 +231,7 @@ public class RouteEncounterWorkflowTests
         var result = await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "route_encounter",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = DefaultParams()
         });
 
@@ -250,7 +250,7 @@ public class RouteEncounterWorkflowTests
         var result = await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "route_encounter",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = DefaultParams()
         });
 
@@ -285,7 +285,7 @@ public class RouteEncounterWorkflowTests
         await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "route_encounter",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = DefaultParams()
         });
 
@@ -310,7 +310,7 @@ public class RouteEncounterWorkflowTests
         var result = await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "route_encounter",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = DefaultParams()
         });
 
@@ -335,7 +335,7 @@ public class RouteEncounterWorkflowTests
         var result = await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "route_encounter",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = MakeParams(new { }) // empty
         });
 
@@ -352,7 +352,7 @@ public class RouteEncounterWorkflowTests
         var result = await workflow.ExecuteDeterministicAsync(new WorkflowRequest
         {
             WorkflowId = "route_encounter",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = DefaultParams()
         });
 

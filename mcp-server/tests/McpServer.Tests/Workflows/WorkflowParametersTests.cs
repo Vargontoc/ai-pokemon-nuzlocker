@@ -141,7 +141,7 @@ public class WorkflowParametersTests
     [Fact]
     public void Converter_DeserializesFromJson()
     {
-        var json = """{"workflowId": "test", "sessionId": "s1", "parameters": {"species": "pikachu", "level": 5}}""";
+        var json = """{"workflowId": "test", "nuzlockeId": "s1", "parameters": {"species": "pikachu", "level": 5}}""";
         var request = JsonSerializer.Deserialize<WorkflowRequest>(json, new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true
@@ -154,7 +154,7 @@ public class WorkflowParametersTests
     [Fact]
     public void Converter_HandlesNullParameters()
     {
-        var json = """{"workflowId": "test", "sessionId": "s1"}""";
+        var json = """{"workflowId": "test", "nuzlockeId": "s1"}""";
         var request = JsonSerializer.Deserialize<WorkflowRequest>(json, new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true

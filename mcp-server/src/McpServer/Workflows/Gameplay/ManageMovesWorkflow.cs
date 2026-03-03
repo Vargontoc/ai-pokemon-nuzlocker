@@ -19,7 +19,7 @@ namespace es.vargontoc.nuzlocke.ai.Workflows.Gameplay;
 /// </summary>
 public class ManageMovesWorkflow : WorkflowBase
 {
-    private readonly INuzlockeFileManager _fileManager;
+    private readonly INuzlockeRepository _repository;
 
     private const string KeyVertiente = "vertiente";
     private const string KeyLearnMoveData = "learn_move_data";
@@ -32,11 +32,11 @@ public class ManageMovesWorkflow : WorkflowBase
         IStateManager stateManager,
         IPokeApiConnector pokeApi,
         IAiProvider aiProvider,
-        INuzlockeFileManager fileManager,
+        INuzlockeRepository repository,
         ILogger<ManageMovesWorkflow> logger)
         : base(stateManager, pokeApi, aiProvider, logger)
     {
-        _fileManager = fileManager;
+        _repository = repository;
     }
 
     public override IReadOnlyList<string> Validate(WorkflowParameters parameters)
@@ -70,7 +70,7 @@ public class ManageMovesWorkflow : WorkflowBase
             return (null, WorkflowResult.Failure(WorkflowId, errors.ToArray()));
 
         var nuzlockeId = request.Parameters.GetString("nuzlocke_id")!;
-        var nuzlockePath = await _fileManager.GetNuzlockePathAsync(nuzlockeId);
+        var nuzlockePath = await _repository.GetNuzlockePathAsync(nuzlockeId);
         if (nuzlockePath == null)
         {
             return (null, WorkflowResult.Failure(WorkflowId,
@@ -82,7 +82,7 @@ public class ManageMovesWorkflow : WorkflowBase
 
         return (new WorkflowContext
         {
-            SessionId = nuzlockeId,
+            NuzlockeId = nuzlockeId,
             Parameters = request.Parameters,
             State = state,
             BattleContext = battleContext,
@@ -187,7 +187,7 @@ public class ManageMovesWorkflow : WorkflowBase
             context.Result.Data["moves"] = currentMoves;
         }
 
-        await StateManager.SaveStateAsync(context.SessionId, state);
+        await StateManager.SaveStateAsync(context.NuzlockeId, state);
         context.State = state;
     }
 

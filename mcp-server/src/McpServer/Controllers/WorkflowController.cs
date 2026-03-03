@@ -41,7 +41,7 @@ public class WorkflowController : ControllerBase
     ///     POST /nuzlocke/workflow
     ///     {
     ///       "workflowId": "capture_pokemon",
-    ///       "sessionId": "my-session-id",
+    ///       "nuzlockeId": "my-session-id",
     ///       "language": "es-ES",
     ///       "parameters": {
     ///         "nuzlocke_id": "my-session-id",
@@ -57,7 +57,7 @@ public class WorkflowController : ControllerBase
     ///     POST /nuzlocke/workflow
     ///     {
     ///       "workflowId": "evolution",
-    ///       "sessionId": "my-session-id",
+    ///       "nuzlockeId": "my-session-id",
     ///       "parameters": {
     ///         "nuzlocke_id": "my-session-id",
     ///         "nickname": "Sparky",
@@ -75,8 +75,8 @@ public class WorkflowController : ControllerBase
         [FromServices] IWorkflowEngine engine,
         CancellationToken ct)
     {
-        _logger.LogInformation("POST /nuzlocke/workflow: {WorkflowId}, session={SessionId}",
-            request.WorkflowId, request.SessionId);
+        _logger.LogInformation("POST /nuzlocke/workflow: {WorkflowId}, nuzlocke={NuzlockeId}",
+            request.WorkflowId, request.NuzlockeId);
         try
         {
             var result = await engine.ExecuteWithAsyncAdviceAsync(request, ct);

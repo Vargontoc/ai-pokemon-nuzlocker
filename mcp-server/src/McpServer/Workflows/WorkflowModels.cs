@@ -9,7 +9,7 @@ namespace es.vargontoc.nuzlocke.ai.Workflows;
 public class WorkflowRequest
 {
     public required string WorkflowId { get; set; }
-    public required string SessionId { get; set; }
+    public required string NuzlockeId { get; set; }
 
     [JsonConverter(typeof(WorkflowParametersConverter))]
     public WorkflowParameters Parameters { get; set; } = new();

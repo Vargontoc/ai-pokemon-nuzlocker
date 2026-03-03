@@ -13,7 +13,7 @@ namespace es.vargontoc.nuzlocke.ai.Workflows.Gameplay;
 /// </summary>
 public class CapturePokemonWorkflow : WorkflowBase
 {
-    private readonly INuzlockeFileManager _fileManager;
+    private readonly INuzlockeRepository _repository;
     private readonly IStatsCalculator _statsCalculator;
 
     public override string WorkflowId => "capture_pokemon";
@@ -22,12 +22,12 @@ public class CapturePokemonWorkflow : WorkflowBase
         IStateManager stateManager,
         IPokeApiConnector pokeApi,
         IAiProvider aiProvider,
-        INuzlockeFileManager fileManager,
+        INuzlockeRepository repository,
         IStatsCalculator statsCalculator,
         ILogger<CapturePokemonWorkflow> logger)
         : base(stateManager, pokeApi, aiProvider, logger)
     {
-        _fileManager = fileManager;
+        _repository = repository;
         _statsCalculator = statsCalculator;
     }
 
@@ -67,7 +67,7 @@ public class CapturePokemonWorkflow : WorkflowBase
         var nuzlockeId = request.Parameters.GetString("nuzlocke_id")!;
 
         // Ensure the nuzlocke_id is known (L1 memory cache → L2 SQLite registry)
-        var nuzlockePath = await _fileManager.GetNuzlockePathAsync(nuzlockeId);
+        var nuzlockePath = await _repository.GetNuzlockePathAsync(nuzlockeId);
         if (nuzlockePath == null)
         {
             return (null, WorkflowResult.Failure(WorkflowId,
@@ -80,7 +80,7 @@ public class CapturePokemonWorkflow : WorkflowBase
 
         var context = new WorkflowContext
         {
-            SessionId = nuzlockeId,
+            NuzlockeId = nuzlockeId,
             Parameters = request.Parameters,
             State = state,
             BattleContext = battleContext,
@@ -115,7 +115,7 @@ public class CapturePokemonWorkflow : WorkflowBase
 
         // 1. Record encounter (enforces 1-capture-per-route rule)
         var encounterRecorded = await StateManager.RecordEncounterAsync(
-            context.SessionId, location, species, nickname);
+            context.NuzlockeId, location, species, nickname);
 
         if (!encounterRecorded)
         {
@@ -130,7 +130,7 @@ public class CapturePokemonWorkflow : WorkflowBase
 
         // 2. Add to team or PC based on team size
         // Re-read state after encounter was recorded
-        var state = await StateManager.GetStateAsync(context.SessionId);
+        var state = await StateManager.GetStateAsync(context.NuzlockeId);
 
         var baseStats = ExtractBaseStats(pokemonData.Stats);
         var defaultDvs = new[] { 8, 8, 8, 8, 8 };
@@ -154,7 +154,7 @@ public class CapturePokemonWorkflow : WorkflowBase
 
         if (state.Team.Count < 6)
         {
-            var added = await StateManager.AddToTeamAsync(context.SessionId, teamMember);
+            var added = await StateManager.AddToTeamAsync(context.NuzlockeId, teamMember);
             if (!added)
                 throw new InvalidOperationException($"Failed to add {nickname} to team");
 
@@ -182,7 +182,7 @@ public class CapturePokemonWorkflow : WorkflowBase
             };
 
             state.PCStorage.Add(storedPokemon);
-            await StateManager.SaveStateAsync(context.SessionId, state);
+            await StateManager.SaveStateAsync(context.NuzlockeId, state);
 
             destination = "pc";
             context.Result.Mutations.Add(new StateMutation
@@ -195,7 +195,7 @@ public class CapturePokemonWorkflow : WorkflowBase
         context.Result.Data["destination"] = destination;
 
         // Update context state for advice generation
-        context.State = await StateManager.GetStateAsync(context.SessionId);
+        context.State = await StateManager.GetStateAsync(context.NuzlockeId);
     }
 
     protected override string GetSystemPrompt(WorkflowContext context)

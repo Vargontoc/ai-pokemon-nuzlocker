@@ -49,7 +49,7 @@ public class AdviceConnectionManager : IAdviceConnectionManager
             && entry.Socket.State == WebSocketState.Open;
     }
 
-    public async Task<bool> SendAsync(string sessionId, AdviceWebSocketMessage message, CancellationToken ct = default)
+    public async Task<bool> SendAsync(string sessionId, object message, CancellationToken ct = default)
     {
         if (!_connections.TryGetValue(sessionId, out var entry))
             return false;

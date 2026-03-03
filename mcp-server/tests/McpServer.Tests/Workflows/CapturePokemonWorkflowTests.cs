@@ -16,7 +16,7 @@ public class CapturePokemonWorkflowTests
     private readonly Mock<IStateManager> _mockState = new();
     private readonly Mock<IPokeApiConnector> _mockPokeApi = new();
     private readonly Mock<IAiProvider> _mockAi = new();
-    private readonly Mock<INuzlockeFileManager> _mockFileManager = new();
+    private readonly Mock<INuzlockeRepository> _mockRepository = new();
     private readonly Mock<ILogger<CapturePokemonWorkflow>> _mockLogger = new();
 
     private NuzlockeState _currentState = new() { Generation = 1, LockeType = "standard" };
@@ -24,7 +24,7 @@ public class CapturePokemonWorkflowTests
     public CapturePokemonWorkflowTests()
     {
         // Default: nuzlocke_id is known (L1 cache + L2 SQLite)
-        _mockFileManager.Setup(f => f.GetNuzlockePathAsync("test_nuzlocke_2026-02-15"))
+        _mockRepository.Setup(f => f.GetNuzlockePathAsync("test_nuzlocke_2026-02-15"))
             .ReturnsAsync("/tmp/nuzlockes/test_nuzlocke_2026-02-15");
 
         // State manager delegates (returns current state)
@@ -68,7 +68,7 @@ public class CapturePokemonWorkflowTests
         _mockStatsCalc.Setup(c => c.Calculate(
             It.IsAny<int[]>(), It.IsAny<int[]>(), It.IsAny<int[]>(), It.IsAny<int>(), It.IsAny<float>()))
             .Returns(new PokemonStats { HP = 45, Attack = 55, Defense = 40, Speed = 90, Special = 50 });
-        return new(_mockState.Object, _mockPokeApi.Object, _mockAi.Object, _mockFileManager.Object, _mockStatsCalc.Object, _mockLogger.Object);
+        return new(_mockState.Object, _mockPokeApi.Object, _mockAi.Object, _mockRepository.Object, _mockStatsCalc.Object, _mockLogger.Object);
     }
 
     private static WorkflowParameters MakeParams(object obj)
@@ -162,7 +162,7 @@ public class CapturePokemonWorkflowTests
         await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "capture_pokemon",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = DefaultParams()
         });
 
@@ -180,7 +180,7 @@ public class CapturePokemonWorkflowTests
         var result = await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "capture_pokemon",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = DefaultParams()
         });
 
@@ -200,7 +200,7 @@ public class CapturePokemonWorkflowTests
         var result = await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "capture_pokemon",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = DefaultParams()
         });
 
@@ -232,7 +232,7 @@ public class CapturePokemonWorkflowTests
         var result = await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "capture_pokemon",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = DefaultParams()
         });
 
@@ -259,7 +259,7 @@ public class CapturePokemonWorkflowTests
         var result = await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "capture_pokemon",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = DefaultParams()
         });
 
@@ -277,7 +277,7 @@ public class CapturePokemonWorkflowTests
         var result = await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "capture_pokemon",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = DefaultParams()
         });
 
@@ -309,7 +309,7 @@ public class CapturePokemonWorkflowTests
         await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "capture_pokemon",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = DefaultParams()
         });
 
@@ -331,7 +331,7 @@ public class CapturePokemonWorkflowTests
         var result = await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "capture_pokemon",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = DefaultParams()
         });
 
@@ -349,7 +349,7 @@ public class CapturePokemonWorkflowTests
     [Fact]
     public async Task Execute_NuzlockeNotFound_ReturnsFailure()
     {
-        _mockFileManager.Setup(f => f.GetNuzlockePathAsync(It.IsAny<string>()))
+        _mockRepository.Setup(f => f.GetNuzlockePathAsync(It.IsAny<string>()))
             .ReturnsAsync((string?)null);
 
         var workflow = CreateWorkflow();
@@ -357,7 +357,7 @@ public class CapturePokemonWorkflowTests
         var result = await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "capture_pokemon",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = DefaultParams()
         });
 
@@ -375,7 +375,7 @@ public class CapturePokemonWorkflowTests
         var result = await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "capture_pokemon",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = MakeParams(new { }) // empty params
         });
 

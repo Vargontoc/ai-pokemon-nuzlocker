@@ -5,6 +5,9 @@ namespace es.vargontoc.nuzlocke.ai.Models;
 /// </summary>
 public enum NuzlockeStatus
 {
+    /// <summary>Partida creada pero todavía no inicializada (primer WS connect pendiente).</summary>
+    Building,
+
     /// <summary>Partida en curso.</summary>
     Active,
 

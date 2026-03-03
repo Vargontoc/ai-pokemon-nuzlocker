@@ -27,46 +27,69 @@ public class ExtraEndpointsDocumentFilter : IDocumentFilter
                     Tags = new List<OpenApiTag> { new() { Name = "WebSocket" } },
                     Summary = "Connect to real-time advice stream (WebSocket)",
                     Description = """
-                        Establishes a WebSocket connection to receive AI advice pushed asynchronously
-                        after calling `POST /nuzlocke/advice`.
+                        Establishes a WebSocket connection keyed to a Nuzlocke run.
+                        One connection per nuzlocke — any previous connection for the same ID is replaced.
 
-                        **Protocol:** Send the HTTP `Upgrade: websocket` header. The server will push
-                        JSON messages whenever advice for the given `sessionId` is ready.
+                        **Pre-requisite:** The nuzlocke must exist (created via `POST /nuzlocke/sessions`).
 
-                        **Message format received from server:**
+                        **Auto-initialization:** If the game state has never been set up, the server
+                        initializes it automatically using the generation and locke type stored in the session.
+
+                        **On connect, the server immediately sends a `connected` message:**
                         ```json
                         {
-                          "correlationId": "abc123",
-                          "sessionId": "my-session-id",
-                          "advice": "Your strategic advice text here..."
+                          "type": "connected",
+                          "nuzlockeId": "uuid",
+                          "initialized": false,
+                          "generation": 1,
+                          "lockeType": "standard"
                         }
                         ```
+                        `initialized: true` means the game state was auto-initialized in this connection.
+
+                        **Subsequent server-push messages:**
+
+                        | type | When |
+                        |---|---|
+                        | `workflow_event` | After any `POST /nuzlocke/workflow` completes |
+                        | `advice_start` | LLM advice generation begins |
+                        | `advice_chunk` | Streaming token from the LLM |
+                        | `advice_end` | Full advice text ready |
+                        | `advice_error` | LLM call failed |
 
                         **Flow:**
-                        1. Connect to `ws://host/ws/advice?sessionId=<id>`
-                        2. Call `POST /nuzlocke/advice` with the same `sessionId`
-                        3. Receive the advice message on the WebSocket when LLM finishes
+                        1. `POST /nuzlocke/sessions` → get `nuzlockeId`
+                        2. `GET ws://host/ws/advice?nuzlockeId=<id>` → receive `connected`
+                        3. `POST /nuzlocke/workflow` → receive `workflow_event` + async advice stream
                         """,
                     Parameters = new List<OpenApiParameter>
                     {
                         new()
                         {
-                            Name = "sessionId",
+                            Name = "nuzlockeId",
                             In = ParameterLocation.Query,
                             Required = true,
                             Schema = new OpenApiSchema { Type = "string" },
-                            Description = "The Nuzlocke session ID. Must match the sessionId used in POST /nuzlocke/advice."
+                            Description = "The Nuzlocke session ID obtained from POST /nuzlocke/sessions."
                         }
                     },
                     Responses = new OpenApiResponses
                     {
                         ["101"] = new OpenApiResponse
                         {
-                            Description = "Switching Protocols — WebSocket connection established."
+                            Description = "Switching Protocols — WebSocket connection established. Server sends `connected` message immediately."
                         },
                         ["400"] = new OpenApiResponse
                         {
-                            Description = "Bad request — not a WebSocket upgrade request, or missing/empty `sessionId`."
+                            Description = "Bad request — not a WebSocket upgrade request, or missing `nuzlockeId`."
+                        },
+                        ["404"] = new OpenApiResponse
+                        {
+                            Description = "Nuzlocke not found — create it first via POST /nuzlocke/sessions."
+                        },
+                        ["500"] = new OpenApiResponse
+                        {
+                            Description = "Failed to load or initialize the nuzlocke game state."
                         }
                     }
                 }

@@ -1,33 +1,37 @@
 namespace es.vargontoc.nuzlocke.ai.Models;
 
 /// <summary>
-/// Metadata almacenada en el fichero .nuzlocke de cada partida.
-/// Contiene información inmutable de la partida.
+/// Metadata de una partida Nuzlocke. Se persiste en SQLite y también como copia en el fichero .nuzlocke.
 /// </summary>
 public class NuzlockeMetadata
 {
-    /// <summary>
-    /// Identificador único: GUID corto + fecha (ej: a3f1b2c4_2026-02-15)
-    /// </summary>
-    public string NuzlockeId { get; set; } = string.Empty;
+    /// <summary>UUID único de la partida (PK).</summary>
+    public string Id { get; set; } = Guid.NewGuid().ToString();
 
-    /// <summary>
-    /// Generación del juego (1 por ahora)
-    /// </summary>
+    /// <summary>Nombre descriptivo de la partida (max 50 caracteres).</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Descripción opcional de la partida (max 100 caracteres).</summary>
+    public string? Descripcion { get; set; }
+
+    /// <summary>Generación del juego (1 por ahora).</summary>
     public int Generation { get; set; } = 1;
 
-    /// <summary>
-    /// Tipo de nuzlocke (standard, hardcore, etc.)
-    /// </summary>
-    public string LockeType { get; set; } = "standard";
+    /// <summary>Tipo de reglas del nuzlocke.</summary>
+    public LockeType LockeType { get; set; } = LockeType.Standard;
 
     /// <summary>
-    /// Fecha de creación de la partida
+    /// True una vez que InitNuzlockeWorkflow ha corrido con éxito para esta partida.
+    /// False significa que la sesión fue creada pero todavía no inicializada.
     /// </summary>
+    public bool IsInitialized { get; set; } = false;
+
+    /// <summary>Estado actual de la partida. Building = recién creada, no inicializada.</summary>
+    public NuzlockeStatus Status { get; set; } = NuzlockeStatus.Building;
+
+    /// <summary>Fecha de creación de la partida.</summary>
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>
-    /// Ruta base donde se encuentra la carpeta del nuzlocke
-    /// </summary>
-    public string BasePath { get; set; } = string.Empty;
+    /// <summary>Última vez que se actualizó la metadata.</summary>
+    public DateTime LastUpdated { get; set; } = DateTime.UtcNow;
 }

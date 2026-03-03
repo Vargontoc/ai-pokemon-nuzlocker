@@ -14,7 +14,7 @@ namespace es.vargontoc.nuzlocke.ai.Workflows.Gameplay;
 /// </summary>
 public class RouteEncounterWorkflow : WorkflowBase
 {
-    private readonly INuzlockeFileManager _fileManager;
+    private readonly INuzlockeRepository _repository;
 
     public override string WorkflowId => "route_encounter";
 
@@ -22,11 +22,11 @@ public class RouteEncounterWorkflow : WorkflowBase
         IStateManager stateManager,
         IPokeApiConnector pokeApi,
         IAiProvider aiProvider,
-        INuzlockeFileManager fileManager,
+        INuzlockeRepository repository,
         ILogger<RouteEncounterWorkflow> logger)
         : base(stateManager, pokeApi, aiProvider, logger)
     {
-        _fileManager = fileManager;
+        _repository = repository;
     }
 
     public override IReadOnlyList<string> Validate(WorkflowParameters parameters)
@@ -54,7 +54,7 @@ public class RouteEncounterWorkflow : WorkflowBase
 
         var nuzlockeId = request.Parameters.GetString("nuzlocke_id")!;
 
-        var nuzlockePath = await _fileManager.GetNuzlockePathAsync(nuzlockeId);
+        var nuzlockePath = await _repository.GetNuzlockePathAsync(nuzlockeId);
         if (nuzlockePath == null)
         {
             return (null, WorkflowResult.Failure(WorkflowId,
@@ -74,7 +74,7 @@ public class RouteEncounterWorkflow : WorkflowBase
 
         var context = new WorkflowContext
         {
-            SessionId = nuzlockeId,
+            NuzlockeId = nuzlockeId,
             Parameters = request.Parameters,
             State = state,
             BattleContext = battleContext,

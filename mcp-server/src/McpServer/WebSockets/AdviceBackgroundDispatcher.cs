@@ -60,38 +60,38 @@ public class AdviceBackgroundDispatcher : IAdviceDispatcher
 
     private async Task ExecuteAgentAdviceAsync(AgentAdviceDispatchRequest request)
     {
-        if (!_connectionManager.HasConnection(request.SessionId))
+        if (!_connectionManager.HasConnection(request.NuzlockeId))
         {
             _logger.LogWarning(
-                "No WebSocket connection for session {SessionId}, skipping async agent advice for correlation {CorrelationId}",
-                request.SessionId, request.CorrelationId);
+                "No WebSocket connection for nuzlocke {NuzlockeId}, skipping async agent advice for correlation {CorrelationId}",
+                request.NuzlockeId, request.CorrelationId);
             return;
         }
 
         // Validate that the nuzlocke session exists before proceeding
-        if (!string.IsNullOrEmpty(request.SessionId))
+        if (!string.IsNullOrEmpty(request.NuzlockeId))
         {
             using var validationScope = _scopeFactory.CreateScope();
-            var fileManager = validationScope.ServiceProvider.GetRequiredService<INuzlockeFileManager>();
-            var nuzlockePath = await fileManager.GetNuzlockePathAsync(request.SessionId);
+            var repository = validationScope.ServiceProvider.GetRequiredService<INuzlockeRepository>();
+            var nuzlockePath = await repository.GetNuzlockePathAsync(request.NuzlockeId);
 
             if (nuzlockePath == null)
             {
                 _logger.LogWarning(
-                    "Nuzlocke not found for session {SessionId}, cancelling advice for correlation {CorrelationId}",
-                    request.SessionId, request.CorrelationId);
+                    "Nuzlocke not found for nuzlocke {NuzlockeId}, cancelling advice for correlation {CorrelationId}",
+                    request.NuzlockeId, request.CorrelationId);
 
-                await _connectionManager.SendAsync(request.SessionId, new AdviceErrorMessage
+                await _connectionManager.SendAsync(request.NuzlockeId, new AdviceErrorMessage
                 {
                     Type = "advice_error",
                     CorrelationId = request.CorrelationId,
-                    Error = $"Nuzlocke not found: {request.SessionId}. Ensure init_nuzlocke was called first."
+                    Error = $"Nuzlocke not found: {request.NuzlockeId}. Ensure init_nuzlocke was called first."
                 });
                 return;
             }
         }
 
-        var startSent = await _connectionManager.SendAsync(request.SessionId, new AdviceStartMessage
+        var startSent = await _connectionManager.SendAsync(request.NuzlockeId, new AdviceStartMessage
         {
             Type = "advice_start",
             CorrelationId = request.CorrelationId,
@@ -109,9 +109,9 @@ public class AdviceBackgroundDispatcher : IAdviceDispatcher
             using var scope = _scopeFactory.CreateScope();
             var agent = scope.ServiceProvider.GetRequiredService<NuzlockeAgent>();
 
-            var advice = await agent.GetAdviceAsync(request.Question, CancellationToken.None, request.SessionId, request.Language);
+            var advice = await agent.GetAdviceAsync(request.Question, CancellationToken.None, request.NuzlockeId, request.Language);
 
-            await _connectionManager.SendAsync(request.SessionId, new AdviceEndMessage
+            await _connectionManager.SendAsync(request.NuzlockeId, new AdviceEndMessage
             {
                 Type = "advice_end",
                 CorrelationId = request.CorrelationId,
@@ -126,7 +126,7 @@ public class AdviceBackgroundDispatcher : IAdviceDispatcher
         {
             _logger.LogError(ex, "Error generating agent advice for correlation {CorrelationId}", request.CorrelationId);
 
-            await _connectionManager.SendAsync(request.SessionId, new AdviceErrorMessage
+            await _connectionManager.SendAsync(request.NuzlockeId, new AdviceErrorMessage
             {
                 Type = "advice_error",
                 CorrelationId = request.CorrelationId,
@@ -138,16 +138,16 @@ public class AdviceBackgroundDispatcher : IAdviceDispatcher
     private async Task ExecuteAsync(AdviceDispatchRequest request)
     {
         // Check if there's a WebSocket connection for this session
-        if (!_connectionManager.HasConnection(request.SessionId))
+        if (!_connectionManager.HasConnection(request.NuzlockeId))
         {
             _logger.LogWarning(
-                "No WebSocket connection for session {SessionId}, skipping async advice for correlation {CorrelationId}",
-                request.SessionId, request.CorrelationId);
+                "No WebSocket connection for nuzlocke {NuzlockeId}, skipping async advice for correlation {CorrelationId}",
+                request.NuzlockeId, request.CorrelationId);
             return;
         }
 
         // Send advice_start
-        var startSent = await _connectionManager.SendAsync(request.SessionId, new AdviceStartMessage
+        var startSent = await _connectionManager.SendAsync(request.NuzlockeId, new AdviceStartMessage
         {
             Type = "advice_start",
             CorrelationId = request.CorrelationId,
@@ -173,7 +173,7 @@ public class AdviceBackgroundDispatcher : IAdviceDispatcher
             {
                 fullAdvice.Append(chunk);
 
-                var chunkSent = await _connectionManager.SendAsync(request.SessionId, new AdviceChunkMessage
+                var chunkSent = await _connectionManager.SendAsync(request.NuzlockeId, new AdviceChunkMessage
                 {
                     Type = "advice_chunk",
                     CorrelationId = request.CorrelationId,
@@ -190,7 +190,7 @@ public class AdviceBackgroundDispatcher : IAdviceDispatcher
             }
 
             // Send advice_end with the full advice
-            await _connectionManager.SendAsync(request.SessionId, new AdviceEndMessage
+            await _connectionManager.SendAsync(request.NuzlockeId, new AdviceEndMessage
             {
                 Type = "advice_end",
                 CorrelationId = request.CorrelationId,
@@ -206,7 +206,7 @@ public class AdviceBackgroundDispatcher : IAdviceDispatcher
             _logger.LogError(ex, "Error generating advice for correlation {CorrelationId}", request.CorrelationId);
 
             // Try to send error message via WebSocket
-            await _connectionManager.SendAsync(request.SessionId, new AdviceErrorMessage
+            await _connectionManager.SendAsync(request.NuzlockeId, new AdviceErrorMessage
             {
                 Type = "advice_error",
                 CorrelationId = request.CorrelationId,

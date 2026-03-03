@@ -1,117 +1,130 @@
-using es.vargontoc.nuzlocke.ai.Agents;
 using es.vargontoc.nuzlocke.ai.Models;
-using es.vargontoc.nuzlocke.ai.WebSockets;
+using es.vargontoc.nuzlocke.ai.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace es.vargontoc.nuzlocke.ai.Controllers;
 
 /// <summary>
-/// Nuzlocke AI advisor — ask questions and receive LLM-generated strategic advice.
+/// Gestión de partidas Nuzlocke (crear, listar, obtener, actualizar estado, eliminar).
 /// </summary>
 [ApiController]
 [Route("nuzlocke")]
 [Produces("application/json")]
 public class NuzlockeController : ControllerBase
 {
-    private readonly ILogger<NuzlockeController> _logger;
-
-    public NuzlockeController(ILogger<NuzlockeController> logger)
-    {
-        _logger = logger;
-    }
-
     /// <summary>
-    /// Dispatch an async advice request. The LLM response is pushed via WebSocket.
+    /// Crear una nueva partida Nuzlocke.
     /// </summary>
     /// <remarks>
-    /// Returns a `correlationId` immediately. Connect to `ws://host/ws/advice?sessionId=&lt;id&gt;`
-    /// to receive the answer when processing completes.
+    /// Crea una partida con UUID, estructura de directorios y metadata .nuzlocke.
+    /// La partida queda en estado Building hasta la primera conexión WebSocket (init_nuzlocke).
     ///
-    /// Example:
+    /// Ejemplo:
     ///
-    ///     POST /nuzlocke/advice
+    ///     POST /nuzlocke
     ///     {
-    ///       "question": "Should I use Sparky against Misty?",
-    ///       "sessionId": "my-session-id",
-    ///       "language": "es-ES"
+    ///       "name": "Mi FireRed Run",
+    ///       "lockeType": "Standard",
+    ///       "generation": 1,
+    ///       "descripcion": "Intento serio"
     ///     }
     /// </remarks>
-    [HttpPost("advice")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    public Task<IActionResult> GetAdvice(
-        [FromBody] AdviceRequest request,
-        [FromServices] IAdviceDispatcher dispatcher)
+    [HttpPost]
+    [ProducesResponseType(typeof(NuzlockeMetadata), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Create(
+        [FromBody] CreateSessionRequest request,
+        [FromServices] INuzlockeRepository repository)
     {
-        _logger.LogInformation("POST /nuzlocke/advice received: {Question}, session={SessionId}, language={Language}",
-            request.Question, request.SessionId, request.Language);
+        if (string.IsNullOrWhiteSpace(request.Name))
+            return BadRequest(new { error = "El campo 'name' es obligatorio." });
 
-        var sessionId = request.SessionId ?? "";
-        var correlationId = Guid.NewGuid().ToString("N");
-        var lng = request.Language ?? "en-EN";
-        _logger.LogInformation(
-            "Dispatching async agent advice for session {SessionId} with correlationId {CorrelationId}",
-            sessionId, correlationId);
+        if (request.Name.Length > 50)
+            return BadRequest(new { error = "El campo 'name' no puede superar los 50 caracteres." });
 
-        dispatcher.DispatchAgentAdvice(new AgentAdviceDispatchRequest
-        {
-            CorrelationId = correlationId,
-            SessionId = sessionId,
-            Question = request.Question,
-            Language = lng
-        });
-
-        return Task.FromResult<IActionResult>(
-            Ok(new { question = request.Question, correlationId }));
-    }
-
-    /// <summary>
-    /// Stream AI advice as Server-Sent Events (SSE).
-    /// </summary>
-    /// <remarks>
-    /// Returns `Content-Type: text/event-stream`. Each chunk is sent as `data: {text}\n\n`.
-    /// The stream ends with `event: end\ndata: [DONE]\n\n`.
-    ///
-    /// Example:
-    ///
-    ///     POST /nuzlocke/advice/stream
-    ///     {
-    ///       "question": "What's the best move against Brock?",
-    ///       "sessionId": "my-session-id",
-    ///       "language": "en-US"
-    ///     }
-    /// </remarks>
-    [HttpPost("advice/stream")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task StreamAdvice(
-        [FromBody] AdviceRequest request,
-        [FromServices] NuzlockeAgent agent,
-        CancellationToken ct)
-    {
-        _logger.LogInformation("POST /nuzlocke/advice/stream received: {Question}, session={SessionId}",
-            request.Question, request.SessionId);
-
-        Response.Headers["Cache-Control"] = "no-cache";
-        Response.ContentType = "text/event-stream";
+        if (request.Descripcion?.Length > 100)
+            return BadRequest(new { error = "El campo 'descripcion' no puede superar los 100 caracteres." });
 
         try
         {
-            await foreach (var chunk in agent.StreamAdviceAsync(request.Question, ct, request.SessionId))
-            {
-                if (ct.IsCancellationRequested) break;
-                await Response.WriteAsync($"data: {chunk.Replace("\n", "\\n")}\n\n");
-                await Response.Body.FlushAsync(ct);
-            }
+            var metadata = await repository.CreateAsync(
+                request.Name,
+                request.LockeType,
+                request.Generation,
+                request.Descripcion);
 
-            await Response.WriteAsync("event: end\ndata: [DONE]\n\n");
-            await Response.Body.FlushAsync(ct);
-        }
-        catch (OperationCanceledException)
-        {
-            // Client cancelled — no response needed
+            return Created($"/nuzlocke/{metadata.Id}", metadata);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error while streaming advice");
+            return Problem(detail: ex.Message, statusCode: 400);
         }
+    }
+
+    /// <summary>
+    /// Listar todas las partidas Nuzlocke existentes.
+    /// </summary>
+    [HttpGet]
+    [ProducesResponseType(typeof(List<NuzlockeMetadata>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> List(
+        [FromServices] INuzlockeRepository repository)
+    {
+        return Ok(await repository.ListAsync());
+    }
+
+    /// <summary>
+    /// Obtener una partida Nuzlocke por ID.
+    /// </summary>
+    /// <param name="id">UUID de la partida.</param>
+    [HttpGet("{id}")]
+    [ProducesResponseType(typeof(NuzlockeMetadata), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Get(
+        string id,
+        [FromServices] INuzlockeRepository repository)
+    {
+        var metadata = await repository.GetMetadataAsync(id);
+        return metadata == null ? NotFound() : Ok(metadata);
+    }
+
+    /// <summary>
+    /// Actualizar el estado de una partida Nuzlocke.
+    /// </summary>
+    /// <remarks>
+    /// Único campo modificable por el usuario. Valores válidos: Active, Finished, GameOver, Abandoned
+    ///
+    ///     PUT /nuzlocke/abc123/state
+    ///     { "status": "Finished" }
+    /// </remarks>
+    /// <param name="id">UUID de la partida.</param>
+    [HttpPut("{id}/state")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateState(
+        string id,
+        [FromBody] UpdateNuzlockeStateRequest request,
+        [FromServices] INuzlockeRepository repository)
+    {
+        var updated = await repository.UpdateStatusAsync(id, request.Status);
+        return updated ? NoContent() : NotFound();
+    }
+
+    /// <summary>
+    /// Eliminar una partida Nuzlocke y toda su estructura de datos.
+    /// </summary>
+    /// <remarks>
+    /// Borra el registro de la base de datos y elimina el directorio de archivos. Operación irreversible.
+    /// </remarks>
+    /// <param name="id">UUID de la partida.</param>
+    [HttpDelete("{id}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Delete(
+        string id,
+        [FromServices] INuzlockeRepository repository)
+    {
+        var ok = await repository.DeleteAsync(id);
+        return ok ? NoContent() : NotFound();
     }
 }

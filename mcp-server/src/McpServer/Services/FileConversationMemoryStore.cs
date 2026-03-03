@@ -5,11 +5,11 @@ namespace es.vargontoc.nuzlocke.ai.Services;
 
 /// <summary>
 /// Stores conversation history in {nuzlockePath}/memory/conversation.json.
-/// Uses INuzlockeFileManager to resolve the nuzlocke path from a session ID.
+/// Uses INuzlockeRepository to resolve the nuzlocke path from a session ID.
 /// </summary>
 public class FileConversationMemoryStore : IConversationMemoryStore
 {
-    private readonly INuzlockeFileManager _fileManager;
+    private readonly INuzlockeRepository _repository;
     private readonly ILogger<FileConversationMemoryStore> _logger;
 
     private const string ConversationFileName = "conversation.json";
@@ -26,9 +26,9 @@ public class FileConversationMemoryStore : IConversationMemoryStore
         PropertyNameCaseInsensitive = true
     };
 
-    public FileConversationMemoryStore(INuzlockeFileManager fileManager, ILogger<FileConversationMemoryStore> logger)
+    public FileConversationMemoryStore(INuzlockeRepository repository, ILogger<FileConversationMemoryStore> logger)
     {
-        _fileManager = fileManager;
+        _repository = repository;
         _logger = logger;
     }
 
@@ -91,7 +91,7 @@ public class FileConversationMemoryStore : IConversationMemoryStore
 
     private async Task<string?> ResolveConversationPathAsync(string sessionId)
     {
-        var nuzlockePath = await _fileManager.GetNuzlockePathAsync(sessionId);
+        var nuzlockePath = await _repository.GetNuzlockePathAsync(sessionId);
         if (nuzlockePath == null)
             return null;
 

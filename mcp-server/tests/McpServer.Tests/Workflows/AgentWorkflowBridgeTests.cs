@@ -106,7 +106,7 @@ public class AgentWorkflowBridgeTests
         // Assert
         Assert.NotNull(capturedRequest);
         Assert.Equal("item_obtained", capturedRequest!.WorkflowId);
-        Assert.Equal("abc123", capturedRequest.SessionId);
+        Assert.Equal("abc123", capturedRequest.NuzlockeId);
         Assert.Equal("potion", capturedRequest.Parameters.GetString("item_name"));
         Assert.Equal(3, capturedRequest.Parameters.GetInt("quantity"));
         Assert.Equal("potion", capturedRequest.Parameters.GetString("category"));
@@ -200,7 +200,7 @@ public class AgentWorkflowBridgeTests
 
         // Assert — sessionId should be extracted from nuzlocke_id in parameters
         Assert.NotNull(capturedRequest);
-        Assert.Equal("my_nuzlocke_123", capturedRequest!.SessionId);
+        Assert.Equal("my_nuzlocke_123", capturedRequest!.NuzlockeId);
     }
 
     [Fact]

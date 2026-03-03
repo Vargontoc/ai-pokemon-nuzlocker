@@ -130,9 +130,9 @@ public class ToolExecutor
                 : args.Moves.Split(',').Select(m => m.Trim()).ToList()
         };
 
-        var success = string.IsNullOrEmpty(args.SessionId)
+        var success = string.IsNullOrEmpty(args.NuzlockeId)
             ? await _stateManager.AddToTeamAsync(member)
-            : await _stateManager.AddToTeamAsync(args.SessionId, member);
+            : await _stateManager.AddToTeamAsync(args.NuzlockeId, member);
 
         return new ToolCallResult
         {
@@ -157,13 +157,13 @@ public class ToolExecutor
             throw new InvalidOperationException("Invalid arguments for mark_as_dead");
         }
 
-        var success = string.IsNullOrEmpty(args.SessionId)
+        var success = string.IsNullOrEmpty(args.NuzlockeId)
             ? await _stateManager.MarkAsDeadAsync(
                 args.Nickname,
                 args.DeathLocation,
                 args.CauseOfDeath)
             : await _stateManager.MarkAsDeadAsync(
-                args.SessionId,
+                args.NuzlockeId,
                 args.Nickname,
                 args.DeathLocation,
                 args.CauseOfDeath);
@@ -191,13 +191,13 @@ public class ToolExecutor
             throw new InvalidOperationException("Invalid arguments for move_to_pc");
         }
 
-        if (string.IsNullOrEmpty(args.SessionId))
+        if (string.IsNullOrEmpty(args.NuzlockeId))
         {
             await _stateManager.MoveToPCAsync(args.Nickname);
         }
         else
         {
-            await _stateManager.MoveToPCAsync(args.SessionId, args.Nickname);
+            await _stateManager.MoveToPCAsync(args.NuzlockeId, args.Nickname);
         }
 
         return new ToolCallResult
@@ -221,13 +221,13 @@ public class ToolExecutor
             throw new InvalidOperationException("Invalid arguments for record_encounter");
         }
 
-        var success = string.IsNullOrEmpty(args.SessionId)
+        var success = string.IsNullOrEmpty(args.NuzlockeId)
             ? await _stateManager.RecordEncounterAsync(
                 args.Location,
                 args.CapturedSpecies,
                 args.CapturedNickname)
             : await _stateManager.RecordEncounterAsync(
-                args.SessionId,
+                args.NuzlockeId,
                 args.Location,
                 args.CapturedSpecies,
                 args.CapturedNickname);
@@ -257,7 +257,7 @@ public class ToolExecutor
         public int? CurrentHP { get; set; }
         public int? MaxHP { get; set; }
         public string? Moves { get; set; }
-        public string? SessionId { get; set; }
+        public string? NuzlockeId { get; set; }
     }
 
     private class MarkAsDeadArgs
@@ -265,13 +265,13 @@ public class ToolExecutor
         public string Nickname { get; set; } = string.Empty;
         public string DeathLocation { get; set; } = string.Empty;
         public string CauseOfDeath { get; set; } = string.Empty;
-        public string? SessionId { get; set; }
+        public string? NuzlockeId { get; set; }
     }
 
     private class MoveToPcArgs
     {
         public string Nickname { get; set; } = string.Empty;
-        public string? SessionId { get; set; }
+        public string? NuzlockeId { get; set; }
     }
 
     private class RecordEncounterArgs
@@ -279,7 +279,7 @@ public class ToolExecutor
         public string Location { get; set; } = string.Empty;
         public string? CapturedSpecies { get; set; }
         public string? CapturedNickname { get; set; }
-        public string? SessionId { get; set; }
+        public string? NuzlockeId { get; set; }
     }
 
     private async Task<ToolCallResult> ExecuteStartBattleAsync(ToolCall toolCall)
@@ -288,9 +288,9 @@ public class ToolExecutor
         if (args == null || string.IsNullOrEmpty(args.OpponentName))
             throw new InvalidOperationException("Invalid arguments for start_battle");
 
-        var battleContext = string.IsNullOrEmpty(args.SessionId)
+        var battleContext = string.IsNullOrEmpty(args.NuzlockeId)
             ? await _stateManager.StartBattleAsync(args.OpponentName, args.ActivePokemonNickname, args.BattleType)
-            : await _stateManager.StartBattleAsync(args.SessionId, args.OpponentName, args.ActivePokemonNickname, args.BattleType);
+            : await _stateManager.StartBattleAsync(args.NuzlockeId, args.OpponentName, args.ActivePokemonNickname, args.BattleType);
 
         return new ToolCallResult
         {
@@ -311,9 +311,9 @@ public class ToolExecutor
         if (args == null || string.IsNullOrEmpty(args.LogEntry))
             throw new InvalidOperationException("Invalid arguments for add_battle_log");
 
-        var success = string.IsNullOrEmpty(args.SessionId)
+        var success = string.IsNullOrEmpty(args.NuzlockeId)
             ? await _stateManager.AddBattleLogAsync(args.LogEntry)
-            : await _stateManager.AddBattleLogAsync(args.SessionId, args.LogEntry);
+            : await _stateManager.AddBattleLogAsync(args.NuzlockeId, args.LogEntry);
 
         return new ToolCallResult
         {
@@ -511,12 +511,12 @@ public class ToolExecutor
         }
 
         // Build the WorkflowRequest — use sessionId if provided in the parameters
-        var sessionId = workflowParams.GetString("nuzlocke_id") ?? args.SessionId ?? "default";
+        var nuzlockeId = workflowParams.GetString("nuzlocke_id") ?? args.NuzlockeId ?? "default";
 
         var request = new WorkflowRequest
         {
             WorkflowId = args.WorkflowId,
-            SessionId = sessionId,
+            NuzlockeId = nuzlockeId,
             Parameters = workflowParams,
             Language = args.Language ?? "en-US"
         };
@@ -535,7 +535,7 @@ public class ToolExecutor
     {
         public string WorkflowId { get; set; } = string.Empty;
         public string? Parameters { get; set; }
-        public string? SessionId { get; set; }
+        public string? NuzlockeId { get; set; }
         public string? Language { get; set; }
     }
 
@@ -544,18 +544,18 @@ public class ToolExecutor
         public string OpponentName { get; set; } = string.Empty;
         public string? ActivePokemonNickname { get; set; }
         public string? BattleType { get; set; }
-        public string? SessionId { get; set; }
+        public string? NuzlockeId { get; set; }
     }
 
     private class AddBattleLogArgs
     {
         public string LogEntry { get; set; } = string.Empty;
-        public string? SessionId { get; set; }
+        public string? NuzlockeId { get; set; }
     }
 
     private class PokeApiArgs
     {
         public string NameOrId { get; set; } = string.Empty;
-        public string? SessionId { get; set; }
+        public string? NuzlockeId { get; set; }
     }
 }

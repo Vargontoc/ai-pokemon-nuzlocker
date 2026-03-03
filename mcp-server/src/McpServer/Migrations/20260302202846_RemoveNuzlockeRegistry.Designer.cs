@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using es.vargontoc.nuzlocke.ai.Data;
 
@@ -10,9 +11,11 @@ using es.vargontoc.nuzlocke.ai.Data;
 namespace es.vargontoc.nuzlocke.ai.Migrations
 {
     [DbContext(typeof(PokeDbContext))]
-    partial class PokeDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260302202846_RemoveNuzlockeRegistry")]
+    partial class RemoveNuzlockeRegistry
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.11");
@@ -140,45 +143,6 @@ namespace es.vargontoc.nuzlocke.ai.Migrations
                         .IsUnique();
 
                     b.ToTable("CachedTypes");
-                });
-
-            modelBuilder.Entity("es.vargontoc.nuzlocke.ai.Models.NuzlockeMetadata", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Descripcion")
-                        .HasMaxLength(100)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("Generation")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("IsInitialized")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<DateTime>("LastUpdated")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("LockeType")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("NuzlockeMetadatas");
                 });
 #pragma warning restore 612, 618
         }

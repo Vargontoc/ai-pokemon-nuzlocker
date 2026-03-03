@@ -16,14 +16,14 @@ public class ManageMovesWorkflowTests
     private readonly Mock<IStateManager> _mockState = new();
     private readonly Mock<IPokeApiConnector> _mockPokeApi = new();
     private readonly Mock<IAiProvider> _mockAi = new();
-    private readonly Mock<INuzlockeFileManager> _mockFileManager = new();
+    private readonly Mock<INuzlockeRepository> _mockRepository = new();
     private readonly Mock<ILogger<ManageMovesWorkflow>> _mockLogger = new();
 
     private NuzlockeState _state = new() { Generation = 1, LockeType = "standard" };
 
     public ManageMovesWorkflowTests()
     {
-        _mockFileManager.Setup(f => f.GetNuzlockePathAsync("nuzlocke-1"))
+        _mockRepository.Setup(f => f.GetNuzlockePathAsync("nuzlocke-1"))
             .ReturnsAsync("/tmp/nuzlocke-1");
 
         _mockState.Setup(s => s.GetStateAsync("nuzlocke-1"))
@@ -55,7 +55,7 @@ public class ManageMovesWorkflowTests
 
     private ManageMovesWorkflow CreateWorkflow() =>
         new(_mockState.Object, _mockPokeApi.Object, _mockAi.Object,
-            _mockFileManager.Object, _mockLogger.Object);
+            _mockRepository.Object, _mockLogger.Object);
 
     private static WorkflowParameters MakeParams(object obj)
     {
@@ -68,7 +68,7 @@ public class ManageMovesWorkflowTests
         new WorkflowRequest
         {
             WorkflowId = "manage_moves",
-            SessionId = "nuzlocke-1",
+            NuzlockeId = "nuzlocke-1",
             Language = "en-US",
             Parameters = MakeParams(parameters)
         };

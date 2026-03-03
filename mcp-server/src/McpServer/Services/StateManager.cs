@@ -1,95 +1,29 @@
-using System.Text.Json;
 using es.vargontoc.nuzlocke.ai.Models;
 
 namespace es.vargontoc.nuzlocke.ai.Services;
 
 public class StateManager : IStateManager
 {
-    private readonly string _stateFilePath;
     private readonly ILogger<StateManager> _logger;
-    private readonly SemaphoreSlim _fileLock = new(1, 1);
-    private static readonly JsonSerializerOptions _jsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
+    private readonly INuzlockeRepository _repository;
 
-    private readonly INuzlockeSessionManager? _sessionManager;
-    private readonly INuzlockeFileManager? _fileManager;
-
-    public StateManager(ILogger<StateManager> logger, IConfiguration configuration, INuzlockeSessionManager? sessionManager = null, INuzlockeFileManager? fileManager = null)
+    public StateManager(ILogger<StateManager> logger, INuzlockeRepository repository)
     {
         _logger = logger;
-        _sessionManager = sessionManager;
-        _fileManager = fileManager;
-        _stateFilePath = configuration.GetValue<string>("StateFilePath") ?? "session_state.json";
+        _repository = repository;
     }
-
-    private bool IsNuzlockeId(string sessionId) =>
-        _fileManager?.GetNuzlockePath(sessionId) != null;
 
     public Task<NuzlockeState> GetStateAsync() => GetStateAsync("default");
 
     public async Task<NuzlockeState> GetStateAsync(string sessionId)
     {
-        // Delegate to NuzlockeFileManager if sessionId is a nuzlockeId
-        if (IsNuzlockeId(sessionId))
-        {
-            try
-            {
-                return await _fileManager!.LoadGameStateAsync(sessionId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading game state for nuzlocke {NuzlockeId}", sessionId);
-                return new NuzlockeState();
-            }
-        }
-
-        if (_sessionManager == null || sessionId == "default")
-        {
-            await _fileLock.WaitAsync();
-            try
-            {
-                if (!File.Exists(_stateFilePath))
-                {
-                    _logger.LogInformation("State file not found, creating new state");
-                    var newState = new NuzlockeState();
-                    await SaveStateInternalAsync(newState);
-                    return newState;
-                }
-
-                var json = await File.ReadAllTextAsync(_stateFilePath);
-                var state = JsonSerializer.Deserialize<NuzlockeState>(json, _jsonOptions);
-
-                if (state == null)
-                {
-                    _logger.LogWarning("Failed to deserialize state, creating new state");
-                    return new NuzlockeState();
-                }
-
-                return state;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error reading state file");
-                return new NuzlockeState();
-            }
-            finally
-            {
-                _fileLock.Release();
-            }
-        }
-
-        // Use session manager to load per-session file
         try
         {
-            var fileData = await _sessionManager.LoadSessionDataAsync(sessionId);
-            return fileData.GameState ?? new NuzlockeState();
+            return await _repository.GetGameStateAsync(sessionId);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error loading session state for {SessionId}", sessionId);
+            _logger.LogError(ex, "Error loading game state for {SessionId}", sessionId);
             return new NuzlockeState();
         }
     }
@@ -98,53 +32,14 @@ public class StateManager : IStateManager
 
     public async Task SaveStateAsync(string sessionId, NuzlockeState state)
     {
-        // Delegate to NuzlockeFileManager if sessionId is a nuzlockeId
-        if (IsNuzlockeId(sessionId))
-        {
-            try
-            {
-                await _fileManager!.SaveGameStateAsync(sessionId, state);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error saving game state for nuzlocke {NuzlockeId}", sessionId);
-            }
-            return;
-        }
-
-        if (_sessionManager == null || sessionId == "default")
-        {
-            await _fileLock.WaitAsync();
-            try
-            {
-                await SaveStateInternalAsync(state);
-            }
-            finally
-            {
-                _fileLock.Release();
-            }
-            return;
-        }
-
-        // Use session manager to persist
         try
         {
-            var fileData = await _sessionManager.LoadSessionDataAsync(sessionId);
-            fileData.GameState = state;
-            await _sessionManager.SaveSessionDataAsync(sessionId, fileData);
+            await _repository.SaveGameStateAsync(sessionId, state);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error saving session state for {SessionId}", sessionId);
+            _logger.LogError(ex, "Error saving game state for {SessionId}", sessionId);
         }
-    }
-
-    private async Task SaveStateInternalAsync(NuzlockeState state)
-    {
-        state.LastUpdated = DateTime.UtcNow;
-        var json = JsonSerializer.Serialize(state, _jsonOptions);
-        await File.WriteAllTextAsync(_stateFilePath, json);
-        _logger.LogInformation("State saved to {FilePath}", _stateFilePath);
     }
 
     public Task<bool> AddToTeamAsync(TeamMember pokemon) => AddToTeamAsync("default", pokemon);
@@ -188,10 +83,8 @@ public class StateManager : IStateManager
             return false;
         }
 
-        // Remove from team
         state.Team.Remove(teamMember);
 
-        // Add to dead list
         var deadPokemon = new DeadPokemon
         {
             Nickname = teamMember.Nickname,
@@ -226,10 +119,8 @@ public class StateManager : IStateManager
             return false;
         }
 
-        // Remove from team
         state.Team.Remove(teamMember);
 
-        // Add to PC storage
         var storedPokemon = new StoredPokemon
         {
             Nickname = teamMember.Nickname,
@@ -243,8 +134,7 @@ public class StateManager : IStateManager
         state.PCStorage.Add(storedPokemon);
         await SaveStateAsync(sessionId, state);
 
-        _logger.LogInformation("Moved {Pokemon} ({Species}) to PC storage",
-            nickname, teamMember.Species);
+        _logger.LogInformation("Moved {Pokemon} ({Species}) to PC storage", nickname, teamMember.Species);
         return true;
     }
 
@@ -278,8 +168,6 @@ public class StateManager : IStateManager
         return true;
     }
 
-    // ========== INVENTORY METHODS ==========
-
     public Task<bool> AddInventoryItemAsync(string itemName, int quantity, string category)
         => AddInventoryItemAsync("default", itemName, quantity, category);
 
@@ -310,8 +198,6 @@ public class StateManager : IStateManager
         return true;
     }
 
-    // ========== MOVES METHODS ==========
-
     public Task<bool> UpdateMovesAsync(string nickname, List<string> moves)
         => UpdateMovesAsync("default", nickname, moves);
 
@@ -334,55 +220,19 @@ public class StateManager : IStateManager
         return true;
     }
 
-    // ========== BATTLE CONTEXT METHODS ==========
-
-    private string BattleContextFilePath => Path.ChangeExtension(_stateFilePath, ".battle.json");
+    // ── Battle context ────────────────────────────────────────────────────
 
     public Task<BattleContext> GetBattleContextAsync() => GetBattleContextAsync("default");
 
     public async Task<BattleContext> GetBattleContextAsync(string sessionId)
     {
-        // Delegate to NuzlockeFileManager if sessionId is a nuzlockeId
-        if (IsNuzlockeId(sessionId))
-        {
-            try
-            {
-                return await _fileManager!.LoadBattleStateAsync(sessionId) ?? new BattleContext();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error loading battle state for nuzlocke {NuzlockeId}", sessionId);
-                return new BattleContext();
-            }
-        }
-
-        if (_sessionManager == null || sessionId == "default")
-        {
-            await _fileLock.WaitAsync();
-            try
-            {
-                if (!File.Exists(BattleContextFilePath))
-                    return new BattleContext();
-
-                var json = await File.ReadAllTextAsync(BattleContextFilePath);
-                return JsonSerializer.Deserialize<BattleContext>(json, _jsonOptions) ?? new BattleContext();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error reading battle context file");
-                return new BattleContext();
-            }
-            finally { _fileLock.Release(); }
-        }
-
         try
         {
-            var fileData = await _sessionManager.LoadSessionDataAsync(sessionId);
-            return fileData.BattleContext ?? new BattleContext();
+            return await _repository.GetBattleStateAsync(sessionId) ?? new BattleContext();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error loading battle context for {SessionId}", sessionId);
+            _logger.LogError(ex, "Error loading battle state for {SessionId}", sessionId);
             return new BattleContext();
         }
     }
@@ -444,44 +294,16 @@ public class StateManager : IStateManager
 
     private async Task SaveBattleContextAsync(string sessionId, BattleContext battleContext)
     {
-        // Delegate to NuzlockeFileManager if sessionId is a nuzlockeId
-        if (IsNuzlockeId(sessionId))
-        {
-            try
-            {
-                if (battleContext.InBattle)
-                    await _fileManager!.SaveBattleStateAsync(sessionId, battleContext);
-                else
-                    await _fileManager!.DeleteBattleStateAsync(sessionId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error saving battle state for nuzlocke {NuzlockeId}", sessionId);
-            }
-            return;
-        }
-
-        if (_sessionManager == null || sessionId == "default")
-        {
-            await _fileLock.WaitAsync();
-            try
-            {
-                var json = JsonSerializer.Serialize(battleContext, _jsonOptions);
-                await File.WriteAllTextAsync(BattleContextFilePath, json);
-            }
-            finally { _fileLock.Release(); }
-            return;
-        }
-
         try
         {
-            var fileData = await _sessionManager.LoadSessionDataAsync(sessionId);
-            fileData.BattleContext = battleContext;
-            await _sessionManager.SaveSessionDataAsync(sessionId, fileData);
+            if (battleContext.InBattle)
+                await _repository.SaveBattleStateAsync(sessionId, battleContext);
+            else
+                await _repository.DeleteBattleStateAsync(sessionId);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error saving battle context for {SessionId}", sessionId);
+            _logger.LogError(ex, "Error saving battle state for {SessionId}", sessionId);
         }
     }
 }

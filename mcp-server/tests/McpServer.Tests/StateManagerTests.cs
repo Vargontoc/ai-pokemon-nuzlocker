@@ -1,48 +1,53 @@
 using es.vargontoc.nuzlocke.ai.Models;
 using es.vargontoc.nuzlocke.ai.Services;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using Xunit;
 
 namespace es.vargontoc.nuzlocke.ai.Tests;
 
-public class StateManagerTests : IDisposable
+public class StateManagerTests
 {
+    private readonly Mock<INuzlockeRepository> _mockRepository = new();
     private readonly StateManager _stateManager;
-    private readonly string _testFilePath;
+    private NuzlockeState _state = new();
+    private BattleContext _battleContext = new();
 
     public StateManagerTests()
     {
-        _testFilePath = $"test_state_{Guid.NewGuid()}.json";
-        var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["StateFilePath"] = _testFilePath
-            })
-            .Build();
+        _mockRepository.Setup(r => r.GetGameStateAsync(It.IsAny<string>()))
+            .ReturnsAsync(() => _state);
+        _mockRepository.Setup(r => r.SaveGameStateAsync(It.IsAny<string>(), It.IsAny<NuzlockeState>()))
+            .Callback<string, NuzlockeState>((_, s) => _state = s)
+            .Returns(Task.CompletedTask);
 
-        _stateManager = new StateManager(NullLogger<StateManager>.Instance, config);
+        _mockRepository.Setup(r => r.GetBattleStateAsync(It.IsAny<string>()))
+            .ReturnsAsync(() => _battleContext.InBattle ? _battleContext : null);
+        _mockRepository.Setup(r => r.SaveBattleStateAsync(It.IsAny<string>(), It.IsAny<BattleContext>()))
+            .Callback<string, BattleContext>((_, bc) => _battleContext = bc)
+            .Returns(Task.CompletedTask);
+        _mockRepository.Setup(r => r.DeleteBattleStateAsync(It.IsAny<string>()))
+            .Callback<string>(_ => _battleContext = new BattleContext())
+            .Returns(Task.CompletedTask);
+
+        _stateManager = new StateManager(NullLogger<StateManager>.Instance, _mockRepository.Object);
     }
 
     [Fact]
-    public async Task GetStateAsync_CreatesNewStateIfFileDoesNotExist()
+    public async Task GetStateAsync_ReturnsCurrentState()
     {
-        // Act
         var state = await _stateManager.GetStateAsync();
 
-        // Assert
         Assert.NotNull(state);
         Assert.Empty(state.Team);
         Assert.Empty(state.DeadPokemon);
         Assert.Empty(state.PCStorage);
         Assert.Empty(state.Encounters);
-        Assert.True(File.Exists(_testFilePath));
     }
 
     [Fact]
     public async Task AddToTeamAsync_AddsPokemonSuccessfully()
     {
-        // Arrange
         var pokemon = new TeamMember
         {
             Nickname = "Sparky",
@@ -51,11 +56,9 @@ public class StateManagerTests : IDisposable
             CaughtAt = "Route 1"
         };
 
-        // Act
         var success = await _stateManager.AddToTeamAsync(pokemon);
         var state = await _stateManager.GetStateAsync();
 
-        // Assert
         Assert.True(success);
         Assert.Single(state.Team);
         Assert.Equal("Sparky", state.Team[0].Nickname);
@@ -65,7 +68,6 @@ public class StateManagerTests : IDisposable
     [Fact]
     public async Task AddToTeamAsync_FailsWhenTeamIsFull()
     {
-        // Arrange - Add 6 Pokemon to fill the team
         for (int i = 1; i <= 6; i++)
         {
             await _stateManager.AddToTeamAsync(new TeamMember
@@ -77,7 +79,6 @@ public class StateManagerTests : IDisposable
             });
         }
 
-        // Act - Try to add a 7th Pokemon
         var result = await _stateManager.AddToTeamAsync(new TeamMember
         {
             Nickname = "Seventh",
@@ -88,7 +89,6 @@ public class StateManagerTests : IDisposable
 
         var state = await _stateManager.GetStateAsync();
 
-        // Assert
         Assert.False(result);
         Assert.Equal(6, state.Team.Count);
     }
@@ -96,7 +96,6 @@ public class StateManagerTests : IDisposable
     [Fact]
     public async Task MarkAsDeadAsync_MovesFromTeamToGraveyard()
     {
-        // Arrange
         await _stateManager.AddToTeamAsync(new TeamMember
         {
             Nickname = "Brave",
@@ -105,11 +104,9 @@ public class StateManagerTests : IDisposable
             CaughtAt = "Route 1"
         });
 
-        // Act
         var success = await _stateManager.MarkAsDeadAsync("Brave", "Viridian Forest", "Defeated by wild Beedrill");
         var state = await _stateManager.GetStateAsync();
 
-        // Assert
         Assert.True(success);
         Assert.Empty(state.Team);
         Assert.Single(state.DeadPokemon);
@@ -122,7 +119,6 @@ public class StateManagerTests : IDisposable
     [Fact]
     public async Task MoveToPCAsync_MovesFromTeamToPC()
     {
-        // Arrange
         await _stateManager.AddToTeamAsync(new TeamMember
         {
             Nickname = "Boxed",
@@ -132,11 +128,9 @@ public class StateManagerTests : IDisposable
             Moves = new List<string> { "tackle", "tail-whip" }
         });
 
-        // Act
         var success = await _stateManager.MoveToPCAsync("Boxed");
         var state = await _stateManager.GetStateAsync();
 
-        // Assert
         Assert.True(success);
         Assert.Empty(state.Team);
         Assert.Single(state.PCStorage);
@@ -148,11 +142,9 @@ public class StateManagerTests : IDisposable
     [Fact]
     public async Task RecordEncounterAsync_RecordsFirstEncounter()
     {
-        // Act
         var success = await _stateManager.RecordEncounterAsync("Route 1", "pidgey", "Birdy");
         var state = await _stateManager.GetStateAsync();
 
-        // Assert
         Assert.True(success);
         Assert.Single(state.Encounters);
         Assert.True(state.Encounters.ContainsKey("Route 1"));
@@ -164,14 +156,11 @@ public class StateManagerTests : IDisposable
     [Fact]
     public async Task RecordEncounterAsync_FailsForDuplicateLocation()
     {
-        // Arrange
         await _stateManager.RecordEncounterAsync("Route 1", "pidgey", "Birdy");
 
-        // Act - Try to record another encounter at same location
         var success = await _stateManager.RecordEncounterAsync("Route 1", "rattata", "Ratty");
 
-        // Assert
-        Assert.False(success); // Nuzlocke rule: only one Pokemon per route
+        Assert.False(success);
     }
 
     // ========== BATTLE CONTEXT TESTS ==========
@@ -255,19 +244,5 @@ public class StateManagerTests : IDisposable
     {
         var result = await _stateManager.EndBattleAsync();
         Assert.False(result);
-    }
-
-    public void Dispose()
-    {
-        if (File.Exists(_testFilePath))
-        {
-            File.Delete(_testFilePath);
-        }
-
-        var battlePath = Path.ChangeExtension(_testFilePath, ".battle.json");
-        if (File.Exists(battlePath))
-        {
-            File.Delete(battlePath);
-        }
     }
 }

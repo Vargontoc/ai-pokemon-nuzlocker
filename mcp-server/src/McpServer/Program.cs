@@ -52,7 +52,7 @@ builder.Services.AddSwaggerGen(options =>
 
             ## Real-time Advice
             Use `POST /nuzlocke/advice/stream` for Server-Sent Events (SSE) streaming,
-            or `POST /nuzlocke/advice` + WebSocket at `ws://host/ws/advice?sessionId=<id>` for async dispatch.
+            or `POST /nuzlocke/advice` + WebSocket at `ws://host/ws/advice?nuzlockeId=<id>` for async dispatch.
             """
     });
 
@@ -91,11 +91,13 @@ builder.Services.Configure<PokeApiOptions>(
 // Register in-memory cache (L1 for PokeAPI data)
 builder.Services.AddMemoryCache();
 
-// Register SQLite database
+// Register SQLite database (context + factory — factory needed by NuzlockeRepository scoped)
 var connectionString = builder.Configuration.GetConnectionString("Database")
     ?? "Data Source=pokecache.db";
 builder.Services.AddDbContext<PokeDbContext>(options =>
     options.UseSqlite(connectionString));
+builder.Services.AddDbContextFactory<PokeDbContext>(options =>
+    options.UseSqlite(connectionString), ServiceLifetime.Scoped);
 
 // Register cache repositories
 builder.Services.AddScoped<ICacheRepository<CachedPokemon>, PokemonCacheRepository>();
@@ -120,14 +122,8 @@ builder.Services.AddScoped<IPokeApiConnector>(sp =>
         sp.GetRequiredService<ILogger<CachedPokeApiConnector>>(),
         sp.GetRequiredService<IOptions<PokeApiOptions>>()));
 
-// Register Nuzlocke session manager (before StateManager, which depends on it)
-builder.Services.AddSingleton<INuzlockeSessionManager, NuzlockeSessionManager>();
-
-// Register Nuzlocke registry repository
-builder.Services.AddScoped<INuzlockeRegistryRepository, NuzlockeRegistryRepository>();
-
-// Register Nuzlocke file manager (per-nuzlocke folder structure)
-builder.Services.AddScoped<INuzlockeFileManager, NuzlockeFileManager>();
+// Register Nuzlocke repository (scoped: EF Core + path determinista por config)
+builder.Services.AddScoped<INuzlockeRepository, NuzlockeRepository>();
 
 // Register Nuzlocke state manager
 builder.Services.AddScoped<IStateManager, StateManager>();
@@ -299,14 +295,11 @@ app.UseCors();
 // Enable WebSocket support
 app.UseWebSockets();
 
-// Apply migrations and initialize nuzlocke registry
+// Apply EF migrations at startup
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<PokeDbContext>();
     db.Database.Migrate();
-
-    var fileManager = scope.ServiceProvider.GetRequiredService<INuzlockeFileManager>();
-    await fileManager.InitializeAsync();
 }
 
 // Map controllers (Agent, Nuzlocke, Workflow, Session, Health)
@@ -350,7 +343,7 @@ app.MapHealthChecks("/health/live", new HealthCheckOptions
 app.MapMcp("/mcp");
 
 // WebSocket endpoint for advice streaming (kept as minimal API — WebSocket lifecycle doesn't fit controllers)
-app.Map("/ws/advice", async (HttpContext ctx, IAdviceConnectionManager connectionManager) =>
+app.Map("/ws/advice", async (HttpContext ctx, IAdviceConnectionManager connectionManager, INuzlockeRepository repository, IWorkflowEngine workflowEngine) =>
 {
     if (!ctx.WebSockets.IsWebSocketRequest)
     {
@@ -359,19 +352,61 @@ app.Map("/ws/advice", async (HttpContext ctx, IAdviceConnectionManager connectio
         return;
     }
 
-    var sessionId = ctx.Request.Query["sessionId"].ToString();
-    if (string.IsNullOrWhiteSpace(sessionId))
+    var nuzlockeId = ctx.Request.Query["nuzlockeId"].ToString();
+    if (string.IsNullOrWhiteSpace(nuzlockeId))
     {
         ctx.Response.StatusCode = 400;
-        await ctx.Response.WriteAsync("Missing required query parameter: sessionId");
+        await ctx.Response.WriteAsync("Missing required query parameter: nuzlockeId");
         return;
     }
 
     var logger = ctx.RequestServices.GetRequiredService<ILogger<Program>>();
-    logger.LogInformation("WebSocket connection accepted for session {SessionId}", sessionId);
 
+    // Validate the session exists — front must create it first via POST /nuzlocke/sessions
+    var metadata = await repository.GetMetadataAsync(nuzlockeId);
+    if (metadata == null)
+    {
+        ctx.Response.StatusCode = 404;
+        await ctx.Response.WriteAsync($"Nuzlocke not found: {nuzlockeId}. Create it first via POST /nuzlocke/sessions");
+        return;
+    }
+
+    // Accept connection — drops any existing connection for this nuzlockeId
     var webSocket = await ctx.WebSockets.AcceptWebSocketAsync();
-    connectionManager.AddConnection(sessionId, webSocket);
+    connectionManager.AddConnection(nuzlockeId, webSocket);
+    logger.LogInformation("WebSocket connected for nuzlocke {NuzlockeId}", nuzlockeId);
+
+    // Initialize game state via workflow (idempotent: warns if already done, skips advice on reconnect).
+    // Emits workflow_event via WebSocket, then we send connected.
+    var initResult = await workflowEngine.ExecuteWithAsyncAdviceAsync(new WorkflowRequest
+    {
+        WorkflowId = "init_nuzlocke",
+        NuzlockeId = nuzlockeId
+    }, ctx.RequestAborted);
+
+    if (!initResult.Success)
+    {
+        logger.LogError("Failed to initialize nuzlocke {NuzlockeId}: {Errors}",
+            nuzlockeId, string.Join(", ", initResult.Errors));
+        connectionManager.RemoveConnection(nuzlockeId);
+        await webSocket.CloseAsync(
+            System.Net.WebSockets.WebSocketCloseStatus.InternalServerError,
+            "Failed to initialize nuzlocke", CancellationToken.None);
+        return;
+    }
+
+    bool initialized = initResult.Mutations.Any(m => m.Type == "nuzlocke_initialized");
+    int generation = initResult.Data.TryGetValue("generation", out var genObj) && genObj is int g ? g : metadata.Generation;
+    string lockeType = initResult.Data.TryGetValue("locke_type", out var ltObj) && ltObj is string lt ? lt : metadata.LockeType.ToString();
+
+    // Confirm connection to front — workflow_event was already sent by the engine
+    await connectionManager.SendAsync(nuzlockeId, new ConnectedMessage
+    {
+        NuzlockeId = nuzlockeId,
+        Initialized = initialized,
+        Generation = generation,
+        LockeType = lockeType
+    });
 
     try
     {
@@ -387,12 +422,12 @@ app.Map("/ws/advice", async (HttpContext ctx, IAdviceConnectionManager connectio
     }
     catch (Exception ex)
     {
-        logger.LogWarning(ex, "WebSocket error for session {SessionId}", sessionId);
+        logger.LogWarning(ex, "WebSocket error for nuzlocke {NuzlockeId}", nuzlockeId);
     }
     finally
     {
-        connectionManager.RemoveConnection(sessionId);
-        logger.LogInformation("WebSocket disconnected for session {SessionId}", sessionId);
+        connectionManager.RemoveConnection(nuzlockeId);
+        logger.LogInformation("WebSocket disconnected for nuzlocke {NuzlockeId}", nuzlockeId);
     }
 });
 

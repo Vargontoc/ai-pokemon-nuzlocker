@@ -7,5 +7,5 @@ public interface IAdviceConnectionManager
     void AddConnection(string sessionId, WebSocket socket);
     void RemoveConnection(string sessionId);
     bool HasConnection(string sessionId);
-    Task<bool> SendAsync(string sessionId, AdviceWebSocketMessage message, CancellationToken ct = default);
+    Task<bool> SendAsync(string nuzlockeId, object message, CancellationToken ct = default);
 }

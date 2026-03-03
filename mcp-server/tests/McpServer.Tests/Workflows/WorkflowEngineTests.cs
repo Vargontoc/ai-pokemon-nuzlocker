@@ -24,7 +24,7 @@ public class WorkflowEngineTests
         var result = await engine.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "nonexistent",
-            SessionId = "s1"
+            NuzlockeId = "s1"
         });
 
         Assert.False(result.Success);
@@ -44,7 +44,7 @@ public class WorkflowEngineTests
         var result = await engine.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "test_workflow",
-            SessionId = "s1"
+            NuzlockeId = "s1"
         });
 
         Assert.True(result.Success);
@@ -65,7 +65,7 @@ public class WorkflowEngineTests
         var result = await engine.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "CAPTURE_POKEMON",
-            SessionId = "s1"
+            NuzlockeId = "s1"
         });
 
         Assert.True(result.Success);
@@ -109,8 +109,8 @@ public class WorkflowEngineTests
 
         var engine = new WorkflowEngine(new[] { w1.Object, w2.Object }, _mockConnectionManager.Object, _mockDispatcher.Object, _mockLogger.Object);
 
-        var r1 = await engine.ExecuteAsync(new WorkflowRequest { WorkflowId = "alpha", SessionId = "s1" });
-        var r2 = await engine.ExecuteAsync(new WorkflowRequest { WorkflowId = "beta", SessionId = "s1" });
+        var r1 = await engine.ExecuteAsync(new WorkflowRequest { WorkflowId = "alpha", NuzlockeId = "s1" });
+        var r2 = await engine.ExecuteAsync(new WorkflowRequest { WorkflowId = "beta", NuzlockeId = "s1" });
 
         Assert.Equal("Alpha advice", r1.Advice);
         Assert.Equal("Beta advice", r2.Advice);
@@ -133,7 +133,7 @@ public class WorkflowEngineTests
         var result = await engine.ExecuteWithAsyncAdviceAsync(new WorkflowRequest
         {
             WorkflowId = "test_workflow",
-            SessionId = "s1"
+            NuzlockeId = "s1"
         });
 
         Assert.True(result.Success);
@@ -165,14 +165,14 @@ public class WorkflowEngineTests
         var result = await engine.ExecuteWithAsyncAdviceAsync(new WorkflowRequest
         {
             WorkflowId = "test_workflow",
-            SessionId = "s1"
+            NuzlockeId = "s1"
         });
 
         Assert.True(result.Success);
         Assert.Null(result.Advice); // Advice is async, not in HTTP response
         Assert.NotNull(result.CorrelationId);
         _mockDispatcher.Verify(d => d.Dispatch(It.Is<AdviceDispatchRequest>(r =>
-            r.SessionId == "s1" &&
+            r.NuzlockeId == "s1" &&
             r.SystemPrompt == "system prompt" &&
             r.UserMessage == "user message")), Times.Once);
     }
@@ -185,7 +185,7 @@ public class WorkflowEngineTests
         var result = await engine.ExecuteWithAsyncAdviceAsync(new WorkflowRequest
         {
             WorkflowId = "nonexistent",
-            SessionId = "s1"
+            NuzlockeId = "s1"
         });
 
         Assert.False(result.Success);
@@ -212,7 +212,7 @@ public class WorkflowEngineTests
         var result = await engine.ExecuteWithAsyncAdviceAsync(new WorkflowRequest
         {
             WorkflowId = "test_workflow",
-            SessionId = "s1"
+            NuzlockeId = "s1"
         });
 
         Assert.False(result.Success);
@@ -251,7 +251,7 @@ public class WorkflowEngineTests
         var result = await engine.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "test_workflow",
-            SessionId = "s1"
+            NuzlockeId = "s1"
         });
 
         Assert.True(result.Success);
@@ -279,7 +279,7 @@ public class WorkflowEngineTests
         await engine.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "test_workflow",
-            SessionId = "s1"
+            NuzlockeId = "s1"
         });
 
         _mockConnectionManager.Verify(
@@ -304,7 +304,7 @@ public class WorkflowEngineTests
         var result = await engine.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "test_workflow",
-            SessionId = "s1"
+            NuzlockeId = "s1"
         });
 
         Assert.False(result.Success);
@@ -346,7 +346,7 @@ public class WorkflowEngineTests
         await engine.ExecuteWithAsyncAdviceAsync(new WorkflowRequest
         {
             WorkflowId = "test_workflow",
-            SessionId = "s1"
+            NuzlockeId = "s1"
         });
 
         // Both event and advice dispatch should happen
@@ -374,7 +374,7 @@ public class WorkflowEngineTests
         var result = await engine.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "test_workflow",
-            SessionId = "s1"
+            NuzlockeId = "s1"
         });
 
         Assert.True(result.Success);
@@ -397,7 +397,7 @@ public class WorkflowEngineTests
         await engine.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "test_workflow",
-            SessionId = "s1"
+            NuzlockeId = "s1"
         });
 
         _mockConnectionManager.Verify(c => c.SendAsync("s1",
@@ -434,7 +434,7 @@ public class WorkflowBaseTests
         var result = await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "test",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = new WorkflowParameters()
         });
 
@@ -456,7 +456,7 @@ public class WorkflowBaseTests
         var result = await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "tracking",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = new WorkflowParameters(dict)
         });
 
@@ -477,7 +477,7 @@ public class WorkflowBaseTests
         var result = await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "throwing",
-            SessionId = "s1",
+            NuzlockeId = "s1",
             Parameters = new WorkflowParameters(dict)
         });
 

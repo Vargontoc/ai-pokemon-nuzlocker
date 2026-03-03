@@ -12,7 +12,7 @@ namespace es.vargontoc.nuzlocke.ai.Workflows.Gameplay;
 /// </summary>
 public class EvolutionWorkflow : WorkflowBase
 {
-    private readonly INuzlockeFileManager _fileManager;
+    private readonly INuzlockeRepository _repository;
     private readonly IStatsCalculator _statsCalculator;
 
     private const string KeyPrevSpecies = "prev_species";
@@ -26,12 +26,12 @@ public class EvolutionWorkflow : WorkflowBase
         IStateManager stateManager,
         IPokeApiConnector pokeApi,
         IAiProvider aiProvider,
-        INuzlockeFileManager fileManager,
+        INuzlockeRepository repository,
         IStatsCalculator statsCalculator,
         ILogger<EvolutionWorkflow> logger)
         : base(stateManager, pokeApi, aiProvider, logger)
     {
-        _fileManager = fileManager;
+        _repository = repository;
         _statsCalculator = statsCalculator;
     }
 
@@ -49,7 +49,7 @@ public class EvolutionWorkflow : WorkflowBase
             return (null, WorkflowResult.Failure(WorkflowId, errors.ToArray()));
 
         var nuzlockeId = request.Parameters.GetString("nuzlocke_id")!;
-        var nuzlockePath = await _fileManager.GetNuzlockePathAsync(nuzlockeId);
+        var nuzlockePath = await _repository.GetNuzlockePathAsync(nuzlockeId);
         if (nuzlockePath == null)
         {
             return (null, WorkflowResult.Failure(WorkflowId,
@@ -61,7 +61,7 @@ public class EvolutionWorkflow : WorkflowBase
 
         return (new WorkflowContext
         {
-            SessionId = nuzlockeId,
+            NuzlockeId = nuzlockeId,
             Parameters = request.Parameters,
             State = state,
             BattleContext = battleContext,
@@ -132,7 +132,7 @@ public class EvolutionWorkflow : WorkflowBase
             pcMember.Stats = newStats;
         }
 
-        await StateManager.SaveStateAsync(context.SessionId, state);
+        await StateManager.SaveStateAsync(context.NuzlockeId, state);
         context.State = state;
 
         context.Result.Mutations.Add(new StateMutation

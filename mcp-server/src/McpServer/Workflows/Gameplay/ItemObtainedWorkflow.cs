@@ -13,7 +13,7 @@ namespace es.vargontoc.nuzlocke.ai.Workflows.Gameplay;
 /// </summary>
 public class ItemObtainedWorkflow : WorkflowBase
 {
-    private readonly INuzlockeFileManager _fileManager;
+    private readonly INuzlockeRepository _repository;
 
     public override string WorkflowId => "item_obtained";
 
@@ -21,11 +21,11 @@ public class ItemObtainedWorkflow : WorkflowBase
         IStateManager stateManager,
         IPokeApiConnector pokeApi,
         IAiProvider aiProvider,
-        INuzlockeFileManager fileManager,
+        INuzlockeRepository repository,
         ILogger<ItemObtainedWorkflow> logger)
         : base(stateManager, pokeApi, aiProvider, logger)
     {
-        _fileManager = fileManager;
+        _repository = repository;
     }
 
     public override IReadOnlyList<string> Validate(WorkflowParameters parameters)
@@ -53,7 +53,7 @@ public class ItemObtainedWorkflow : WorkflowBase
 
         var nuzlockeId = request.Parameters.GetString("nuzlocke_id")!;
 
-        var nuzlockePath = await _fileManager.GetNuzlockePathAsync(nuzlockeId);
+        var nuzlockePath = await _repository.GetNuzlockePathAsync(nuzlockeId);
         if (nuzlockePath == null)
         {
             return (null, WorkflowResult.Failure(WorkflowId,
@@ -65,7 +65,7 @@ public class ItemObtainedWorkflow : WorkflowBase
 
         var context = new WorkflowContext
         {
-            SessionId = nuzlockeId,
+            NuzlockeId = nuzlockeId,
             Parameters = request.Parameters,
             State = state,
             BattleContext = battleContext,
@@ -109,7 +109,7 @@ public class ItemObtainedWorkflow : WorkflowBase
         var quantity = context.Parameters.GetInt("quantity") ?? 1;
         var category = context.Parameters.GetString("category")!;
 
-        await StateManager.AddInventoryItemAsync(context.SessionId, itemName, quantity, category);
+        await StateManager.AddInventoryItemAsync(context.NuzlockeId, itemName, quantity, category);
 
         context.Result.Mutations.Add(new StateMutation
         {
@@ -118,7 +118,7 @@ public class ItemObtainedWorkflow : WorkflowBase
         });
 
         // Re-read state to get updated inventory
-        context.State = await StateManager.GetStateAsync(context.SessionId);
+        context.State = await StateManager.GetStateAsync(context.NuzlockeId);
 
         // Add item info and updated inventory to result data
         context.Result.Data["item"] = new

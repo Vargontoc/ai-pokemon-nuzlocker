@@ -29,7 +29,7 @@ public class AdviceBackgroundDispatcherTests
         return new AdviceBackgroundDispatcher(_mockConnectionManager.Object, scopeFactory, _mockLogger.Object);
     }
 
-    private readonly Mock<INuzlockeFileManager> _mockFileManager = new();
+    private readonly Mock<INuzlockeRepository> _mockRepository = new();
 
     private AdviceBackgroundDispatcher CreateDispatcherWithAgent(string? nuzlockePathResult = "/fake/path")
     {
@@ -43,13 +43,13 @@ public class AdviceBackgroundDispatcherTests
         mockState.Setup(s => s.GetBattleContextAsync())
             .ReturnsAsync(new BattleContext());
 
-        _mockFileManager.Setup(f => f.GetNuzlockePathAsync(It.IsAny<string>()))
+        _mockRepository.Setup(f => f.GetNuzlockePathAsync(It.IsAny<string>()))
             .ReturnsAsync(nuzlockePathResult);
 
         var services = new ServiceCollection();
         services.AddScoped<IAiProvider>(_ => _mockAiProvider.Object);
         services.AddScoped<IStateManager>(_ => mockState.Object);
-        services.AddScoped<INuzlockeFileManager>(_ => _mockFileManager.Object);
+        services.AddScoped<INuzlockeRepository>(_ => _mockRepository.Object);
         services.AddScoped<IPokeApiConnector>(_ => new Mock<IPokeApiConnector>().Object);
         services.AddScoped<IWorkflowEngine>(_ => new Mock<IWorkflowEngine>().Object);
         services.AddSingleton<ILoggerFactory>(NullLoggerFactory.Instance);
@@ -71,7 +71,7 @@ public class AdviceBackgroundDispatcherTests
         dispatcher.Dispatch(new AdviceDispatchRequest
         {
             CorrelationId = "corr1",
-            SessionId = "session1",
+            NuzlockeId = "session1",
             WorkflowId = "test",
             SystemPrompt = "system",
             UserMessage = "user"
@@ -102,7 +102,7 @@ public class AdviceBackgroundDispatcherTests
         dispatcher.Dispatch(new AdviceDispatchRequest
         {
             CorrelationId = "corr1",
-            SessionId = "session1",
+            NuzlockeId = "session1",
             WorkflowId = "test",
             SystemPrompt = "system",
             UserMessage = "user"
@@ -138,7 +138,7 @@ public class AdviceBackgroundDispatcherTests
         dispatcher.Dispatch(new AdviceDispatchRequest
         {
             CorrelationId = "corr1",
-            SessionId = "session1",
+            NuzlockeId = "session1",
             WorkflowId = "test",
             SystemPrompt = "system",
             UserMessage = "user"
@@ -171,7 +171,7 @@ public class AdviceBackgroundDispatcherTests
         dispatcher.Dispatch(new AdviceDispatchRequest
         {
             CorrelationId = "corr1",
-            SessionId = "session1",
+            NuzlockeId = "session1",
             WorkflowId = "test",
             SystemPrompt = "system",
             UserMessage = "user"
@@ -194,7 +194,7 @@ public class AdviceBackgroundDispatcherTests
         dispatcher.DispatchAgentAdvice(new AgentAdviceDispatchRequest
         {
             CorrelationId = "corr_agent1",
-            SessionId = "session1",
+            NuzlockeId = "session1",
             Question = "What Pokemon should I catch?",
             Language = "en-US"
         });
@@ -226,7 +226,7 @@ public class AdviceBackgroundDispatcherTests
         dispatcher.DispatchAgentAdvice(new AgentAdviceDispatchRequest
         {
             CorrelationId = "corr_agent2",
-            SessionId = "session1",
+            NuzlockeId = "session1",
             Question = "What Pokemon should I catch?",
             Language = "en-US"
         });
@@ -265,7 +265,7 @@ public class AdviceBackgroundDispatcherTests
         dispatcher.DispatchAgentAdvice(new AgentAdviceDispatchRequest
         {
             CorrelationId = "corr_agent3",
-            SessionId = "session1",
+            NuzlockeId = "session1",
             Question = "Help me!",
             Language = "en-US"
         });
@@ -291,7 +291,7 @@ public class AdviceBackgroundDispatcherTests
         dispatcher.DispatchAgentAdvice(new AgentAdviceDispatchRequest
         {
             CorrelationId = "corr_notfound",
-            SessionId = "invalid_session",
+            NuzlockeId = "invalid_session",
             Question = "What should I do?",
             Language = "en-US"
         });

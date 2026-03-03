@@ -40,7 +40,7 @@ public class WorkflowEventMessage : AdviceWebSocketMessage
 public class AdviceDispatchRequest
 {
     public required string CorrelationId { get; set; }
-    public required string SessionId { get; set; }
+    public required string NuzlockeId { get; set; }
     public required string WorkflowId { get; set; }
     public required string SystemPrompt { get; set; }
     public required string UserMessage { get; set; }
@@ -49,7 +49,21 @@ public class AdviceDispatchRequest
 public class AgentAdviceDispatchRequest
 {
     public required string CorrelationId { get; set; }
-    public required string SessionId { get; set; }
+    public required string NuzlockeId { get; set; }
     public required string Question { get; set; }
     public required string Language { get; set; }
+}
+
+/// <summary>
+/// Sent once immediately after the WebSocket connection is established.
+/// Front should read this to confirm the nuzlocke context before sending requests.
+/// </summary>
+public class ConnectedMessage
+{
+    public string Type => "connected";
+    public required string NuzlockeId { get; set; }
+    /// <summary>True if the game state was auto-initialized during this connection.</summary>
+    public bool Initialized { get; set; }
+    public int Generation { get; set; }
+    public string LockeType { get; set; } = "standard";
 }

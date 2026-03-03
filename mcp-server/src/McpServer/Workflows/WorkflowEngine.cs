@@ -50,8 +50,8 @@ public class WorkflowEngine : IWorkflowEngine
                 $"Unknown workflow: '{request.WorkflowId}'. Available: {string.Join(", ", _workflows.Keys)}");
         }
 
-        _logger.LogInformation("Executing workflow {WorkflowId} for session {SessionId}",
-            request.WorkflowId, request.SessionId);
+        _logger.LogInformation("Executing workflow {WorkflowId} for nuzlocke {NuzlockeId}",
+            request.WorkflowId, request.NuzlockeId);
 
         var sw = Stopwatch.StartNew();
         var result = await workflow.ExecuteAsync(request, ct);
@@ -60,7 +60,7 @@ public class WorkflowEngine : IWorkflowEngine
         _logger.LogInformation("Workflow {WorkflowId} completed in {Ms:F0}ms. Success={Success}",
             request.WorkflowId, sw.Elapsed.TotalMilliseconds, result.Success);
 
-        await EmitWorkflowEventAsync(request.SessionId, result);
+        await EmitWorkflowEventAsync(request.NuzlockeId, result);
 
         return result;
     }
@@ -76,19 +76,19 @@ public class WorkflowEngine : IWorkflowEngine
 
         // Determine the session ID for WebSocket lookup
         // For capture_pokemon-style workflows, the sessionId is the nuzlocke_id from parameters
-        var sessionId = request.Parameters.GetString("nuzlocke_id") ?? request.SessionId;
+        var nuzlockeId = request.NuzlockeId ?? request.Parameters.GetString("nuzlocke_id");
 
         // If no WebSocket is connected, fall back to synchronous execution
-        if (!_connectionManager.HasConnection(sessionId))
+        if (!_connectionManager.HasConnection(nuzlockeId))
         {
             _logger.LogInformation(
-                "No WebSocket for session {SessionId}, falling back to sync execution for {WorkflowId}",
-                sessionId, request.WorkflowId);
+                "No WebSocket for nuzlocke {NuzlockeId}, falling back to sync execution for {WorkflowId}",
+                nuzlockeId, request.WorkflowId);
             return await ExecuteAsync(request, ct);
         }
 
-        _logger.LogInformation("Executing deterministic workflow {WorkflowId} with async advice for session {SessionId}",
-            request.WorkflowId, sessionId);
+        _logger.LogInformation("Executing deterministic workflow {WorkflowId} with async advice for nuzlocke {NuzlockeId}",
+            request.WorkflowId, nuzlockeId);
 
         var sw = Stopwatch.StartNew();
         var deterministicResult = await workflow.ExecuteDeterministicAsync(request, ct);
@@ -99,7 +99,7 @@ public class WorkflowEngine : IWorkflowEngine
 
         if (!deterministicResult.Result.Success)
         {
-            await EmitWorkflowEventAsync(sessionId, deterministicResult.Result);
+            await EmitWorkflowEventAsync(nuzlockeId, deterministicResult.Result);
             return deterministicResult.Result;
         }
 
@@ -113,28 +113,28 @@ public class WorkflowEngine : IWorkflowEngine
             _adviceDispatcher.Dispatch(new AdviceDispatchRequest
             {
                 CorrelationId = correlationId,
-                SessionId = sessionId,
+                NuzlockeId = nuzlockeId,
                 WorkflowId = request.WorkflowId,
                 SystemPrompt = deterministicResult.SystemPrompt,
                 UserMessage = deterministicResult.UserMessage
             });
 
             _logger.LogInformation(
-                "Advice dispatched for correlation {CorrelationId} on session {SessionId}",
-                correlationId, sessionId);
+                "Advice dispatched for correlation {CorrelationId} on nuzlocke {NuzlockeId}",
+                correlationId, nuzlockeId);
         }
 
-        await EmitWorkflowEventAsync(sessionId, deterministicResult.Result);
+        await EmitWorkflowEventAsync(nuzlockeId, deterministicResult.Result);
 
         return deterministicResult.Result;
     }
 
-    private async Task EmitWorkflowEventAsync(string sessionId, WorkflowResult result)
+    private async Task EmitWorkflowEventAsync(string nuzlockeId, WorkflowResult result)
     {
-        if (!_connectionManager.HasConnection(sessionId))
+        if (!_connectionManager.HasConnection(nuzlockeId))
             return;
 
-        var sent = await _connectionManager.SendAsync(sessionId, new WorkflowEventMessage
+        var sent = await _connectionManager.SendAsync(nuzlockeId, new WorkflowEventMessage
         {
             Type = "workflow_event",
             CorrelationId = result.CorrelationId ?? Guid.NewGuid().ToString("N"),
@@ -148,8 +148,8 @@ public class WorkflowEngine : IWorkflowEngine
         if (sent)
         {
             _logger.LogInformation(
-                "Workflow event emitted for {WorkflowId} on session {SessionId} (success={Success}, mutations={MutationCount})",
-                result.WorkflowId, sessionId, result.Success, result.Mutations.Count);
+                "Workflow event emitted for {WorkflowId} on nuzlocke {NuzlockeId} (success={Success}, mutations={MutationCount})",
+                result.WorkflowId, nuzlockeId, result.Success, result.Mutations.Count);
         }
     }
 

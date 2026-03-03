@@ -11,7 +11,7 @@ namespace es.vargontoc.nuzlocke.ai.Workflows.Gameplay;
 /// </summary>
 public class SetPersonalityWorkflow : WorkflowBase
 {
-    private readonly INuzlockeFileManager _fileManager;
+    private readonly INuzlockeRepository _repository;
 
     public override string WorkflowId => "set_personality";
 
@@ -19,11 +19,11 @@ public class SetPersonalityWorkflow : WorkflowBase
         IStateManager stateManager,
         IPokeApiConnector pokeApi,
         IAiProvider aiProvider,
-        INuzlockeFileManager fileManager,
+        INuzlockeRepository repository,
         ILogger<SetPersonalityWorkflow> logger)
         : base(stateManager, pokeApi, aiProvider, logger)
     {
-        _fileManager = fileManager;
+        _repository = repository;
     }
 
     public override IReadOnlyList<string> Validate(WorkflowParameters parameters)
@@ -48,7 +48,7 @@ public class SetPersonalityWorkflow : WorkflowBase
             return (null, WorkflowResult.Failure(WorkflowId, errors.ToArray()));
 
         var nuzlockeId = request.Parameters.GetString("nuzlocke_id")!;
-        var nuzlockePath = await _fileManager.GetNuzlockePathAsync(nuzlockeId);
+        var nuzlockePath = await _repository.GetNuzlockePathAsync(nuzlockeId);
         if (nuzlockePath == null)
         {
             return (null, WorkflowResult.Failure(WorkflowId,
@@ -60,7 +60,7 @@ public class SetPersonalityWorkflow : WorkflowBase
 
         return (new WorkflowContext
         {
-            SessionId = nuzlockeId,
+            NuzlockeId = nuzlockeId,
             Parameters = request.Parameters,
             State = state,
             BattleContext = battleContext,
@@ -76,7 +76,7 @@ public class SetPersonalityWorkflow : WorkflowBase
         var previous = context.State.Personality;
 
         context.State.Personality = newPersonality;
-        await StateManager.SaveStateAsync(context.SessionId, context.State);
+        await StateManager.SaveStateAsync(context.NuzlockeId, context.State);
 
         context.Result.Mutations.Add(new StateMutation
         {

@@ -45,12 +45,12 @@ public abstract class WorkflowBase : IWorkflow
         if (errors.Count > 0)
             return (null, WorkflowResult.Failure(WorkflowId, errors.ToArray()));
 
-        var state = await StateManager.GetStateAsync(request.SessionId);
-        var battleContext = await StateManager.GetBattleContextAsync(request.SessionId);
+        var state = await StateManager.GetStateAsync(request.NuzlockeId);
+        var battleContext = await StateManager.GetBattleContextAsync(request.NuzlockeId);
 
         var context = new WorkflowContext
         {
-            SessionId = request.SessionId,
+            NuzlockeId = request.NuzlockeId,
             Parameters = request.Parameters,
             State = state,
             BattleContext = battleContext,
@@ -77,7 +77,7 @@ public abstract class WorkflowBase : IWorkflow
         catch (Exception ex)
         {
             Logger.LogError(ex, "Workflow {WorkflowId} failed for session {SessionId}",
-                WorkflowId, request.SessionId);
+                WorkflowId, request.NuzlockeId);
             return WorkflowResult.Failure(WorkflowId, $"Workflow execution failed: {ex.Message}");
         }
     }
@@ -106,7 +106,7 @@ public abstract class WorkflowBase : IWorkflow
         catch (Exception ex)
         {
             Logger.LogError(ex, "Workflow {WorkflowId} deterministic execution failed for session {SessionId}",
-                WorkflowId, request.SessionId);
+                WorkflowId, request.NuzlockeId);
             return new DeterministicResult
             {
                 Result = WorkflowResult.Failure(WorkflowId, $"Workflow execution failed: {ex.Message}")
@@ -189,7 +189,7 @@ public abstract class WorkflowBase : IWorkflow
 /// </summary>
 public class WorkflowContext
 {
-    public required string SessionId { get; set; }
+    public required string NuzlockeId { get; set; }
     public required WorkflowParameters Parameters { get; set; }
     public required NuzlockeState State { get; set; }
     public required BattleContext BattleContext { get; set; }

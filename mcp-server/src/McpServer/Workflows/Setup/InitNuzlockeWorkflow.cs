@@ -6,13 +6,14 @@ using es.vargontoc.nuzlocke.ai.Services;
 namespace es.vargontoc.nuzlocke.ai.Workflows.Setup;
 
 /// <summary>
-/// One-shot workflow para inicializar una partida Nuzlocke.
-/// Crea la estructura de carpetas, metadata y game_state inicial.
-/// Input: generation (int, solo 1), locke_type (string), base_path (string, obligatorio)
+/// Workflow de inicialización de una partida Nuzlocke. Mutación pura, sin llamada al LLM.
+/// Se ejecuta en la primera conexión WebSocket al nuzlocke.
+/// Idempotente: si ya está inicializado, añade una mutation de warning y no hace nada más.
 /// </summary>
 public class InitNuzlockeWorkflow : WorkflowBase
 {
-    private readonly INuzlockeFileManager _fileManager;
+    private readonly INuzlockeRepository _repository;
+    private const string AlreadyInitializedKey = "_already_initialized";
 
     public override string WorkflowId => "init_nuzlocke";
 
@@ -20,107 +21,99 @@ public class InitNuzlockeWorkflow : WorkflowBase
         IStateManager stateManager,
         IPokeApiConnector pokeApi,
         IAiProvider aiProvider,
-        INuzlockeFileManager fileManager,
+        INuzlockeRepository repository,
         ILogger<InitNuzlockeWorkflow> logger)
         : base(stateManager, pokeApi, aiProvider, logger)
     {
-        _fileManager = fileManager;
+        _repository = repository;
     }
 
-    public override IReadOnlyList<string> Validate(WorkflowParameters parameters)
-    {
-        var errors = new List<string>();
+    public override IReadOnlyList<string> Validate(WorkflowParameters parameters) => [];
 
-        if (string.IsNullOrWhiteSpace(parameters.GetString("base_path")))
-            errors.Add("Missing required parameter: base_path");
-
-        var generation = parameters.GetInt("generation");
-        if (generation == null)
-            errors.Add("Missing required parameter: generation");
-        else if (generation != 1)
-            errors.Add("Only generation 1 is supported");
-
-        // locke_type is optional, defaults to "standard"
-
-        return errors;
-    }
-
-    /// <summary>
-    /// Override: init_nuzlocke is a creation workflow — no pre-existing state to load.
-    /// Skips StateManager.GetStateAsync to avoid "session not found" errors.
-    /// </summary>
-    protected override Task<(WorkflowContext? Context, WorkflowResult? FailureResult)> BuildContextAsync(
+    protected override async Task<(WorkflowContext? Context, WorkflowResult? FailureResult)> BuildContextAsync(
         WorkflowRequest request, CancellationToken ct)
     {
-        var errors = Validate(request.Parameters);
-        if (errors.Count > 0)
-            return Task.FromResult<(WorkflowContext?, WorkflowResult?)>(
-                (null, WorkflowResult.Failure(WorkflowId, errors.ToArray())));
+        var metadata = await _repository.GetMetadataAsync(request.NuzlockeId);
+        if (metadata == null)
+        {
+            return (null, WorkflowResult.Failure(WorkflowId,
+                $"Nuzlocke not found: '{request.NuzlockeId}'. Create it first via POST /nuzlocke"));
+        }
+
+        var state = await _repository.GetGameStateAsync(request.NuzlockeId);
+        var battleContext = await _repository.GetBattleStateAsync(request.NuzlockeId) ?? new BattleContext();
 
         var context = new WorkflowContext
         {
-            SessionId = request.SessionId,
+            NuzlockeId = request.NuzlockeId,
             Parameters = request.Parameters,
-            State = new NuzlockeState(),
-            BattleContext = new BattleContext(),
+            State = state,
+            BattleContext = battleContext,
             Result = new WorkflowResult { WorkflowId = WorkflowId, Success = true },
             Language = request.Language
         };
 
-        return Task.FromResult<(WorkflowContext?, WorkflowResult?)>((context, null));
+        context.FetchedData["_metadata"] = metadata;
+        return (context, null);
     }
 
-    protected override Task FetchDataAsync(WorkflowContext context, CancellationToken ct)
-    {
-        // No PokeAPI data needed for init
-        return Task.CompletedTask;
-    }
+    protected override Task FetchDataAsync(WorkflowContext context, CancellationToken ct) =>
+        Task.CompletedTask;
 
     protected override async Task MutateStateAsync(WorkflowContext context, CancellationToken ct)
     {
-        var basePath = context.Parameters.GetString("base_path")!;
-        var generation = context.Parameters.GetInt("generation") ?? 1;
-        var lockeType = context.Parameters.GetString("locke_type") ?? "standard";
+        var metadata = (NuzlockeMetadata)context.FetchedData["_metadata"];
 
-        var nuzlockeId = await _fileManager.CreateNuzlockeAsync(basePath, generation, lockeType);
+        if (metadata.IsInitialized)
+        {
+            Logger.LogWarning(
+                "Nuzlocke {NuzlockeId} is already initialized (Gen {Generation}, {LockeType}). Skipping init.",
+                context.NuzlockeId, metadata.Generation, metadata.LockeType);
+
+            context.Result.Mutations.Add(new StateMutation
+            {
+                Type = "nuzlocke_already_initialized",
+                Description = $"Nuzlocke {context.NuzlockeId} already initialized (Gen {metadata.Generation}, {metadata.LockeType})"
+            });
+
+            context.FetchedData[AlreadyInitializedKey] = true;
+            return;
+        }
+
+        // Primera inicialización: crear game_state.json y marcar como inicializado
+        var initialState = new NuzlockeState
+        {
+            Generation = metadata.Generation,
+            LockeType = metadata.LockeType.ToString().ToLowerInvariant(),
+            StartDate = DateTime.UtcNow,
+            LastUpdated = DateTime.UtcNow
+        };
+
+        await _repository.SaveGameStateAsync(context.NuzlockeId, initialState);
+
+        metadata.IsInitialized = true;
+        await _repository.SaveMetadataAsync(metadata);
+
+        await _repository.UpdateStatusAsync(context.NuzlockeId, NuzlockeStatus.Active);
+
+        context.State = initialState;
 
         context.Result.Mutations.Add(new StateMutation
         {
-            Type = "nuzlocke_created",
-            Description = $"Created nuzlocke {nuzlockeId} (Gen {generation}, {lockeType})"
+            Type = "nuzlocke_initialized",
+            Description = $"Initialized nuzlocke {context.NuzlockeId} (Gen {metadata.Generation}, {metadata.LockeType})"
         });
 
-        context.Result.Data["nuzlocke_id"] = nuzlockeId;
-        context.Result.Data["generation"] = generation;
-        context.Result.Data["locke_type"] = lockeType;
-        context.Result.Data["base_path"] = basePath;
-
-        // Store for advice generation
-        context.FetchedData["nuzlocke_id"] = nuzlockeId;
+        context.Result.Data["nuzlocke_id"] = context.NuzlockeId;
+        context.Result.Data["generation"] = metadata.Generation;
+        context.Result.Data["locke_type"] = metadata.LockeType.ToString();
     }
 
-    protected override string GetSystemPrompt(WorkflowContext context)
-    {
-        var generation = context.Parameters.GetInt("generation") ?? 1;
-        var lockeType = context.Parameters.GetString("locke_type") ?? "standard";
+    // Sin LLM: GenerateAdviceAsync devuelve null (hereda el comportamiento base que skip si no hay prompts)
+    protected override Task<string?> GenerateAdviceAsync(WorkflowContext context, CancellationToken ct) =>
+        Task.FromResult<string?>(null);
 
-        return $"""
-            You are a Pokemon Nuzlocke advisor specialized in Generation {generation} ({lockeType} rules).
-            Give concise, actionable tips for starting a new Nuzlocke run.
-            Focus on: starter choice, early game survival, and key first encounters.
-            Keep the response under 250 words. And the answer must be {context.Language} language.
-            """;
-    }
+    protected override string GetSystemPrompt(WorkflowContext context) => string.Empty;
 
-    protected override string BuildUserMessage(WorkflowContext context)
-    {
-        var generation = context.Parameters.GetInt("generation") ?? 1;
-        var lockeType = context.Parameters.GetString("locke_type") ?? "standard";
-
-        return $"""
-            I'm starting a new Generation {generation} Nuzlocke ({lockeType} rules).
-            What starter should I choose and what should I watch out for in the early game?
-            Responde me in {context.Language} language
-            """;
-    }
+    protected override string BuildUserMessage(WorkflowContext context) => string.Empty;
 }

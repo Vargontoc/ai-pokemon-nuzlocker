@@ -11,7 +11,7 @@ namespace es.vargontoc.nuzlocke.ai.Workflows.Gameplay;
 /// </summary>
 public class LevelUpWorkflow : WorkflowBase
 {
-    private readonly INuzlockeFileManager _fileManager;
+    private readonly INuzlockeRepository _repository;
     private readonly IStatsCalculator _statsCalculator;
     private readonly IPokeApiConnector _pokeApi;
 
@@ -21,12 +21,12 @@ public class LevelUpWorkflow : WorkflowBase
         IStateManager stateManager,
         IPokeApiConnector pokeApi,
         IAiProvider aiProvider,
-        INuzlockeFileManager fileManager,
+        INuzlockeRepository repository,
         IStatsCalculator statsCalculator,
         ILogger<LevelUpWorkflow> logger)
         : base(stateManager, pokeApi, aiProvider, logger)
     {
-        _fileManager = fileManager;
+        _repository = repository;
         _statsCalculator = statsCalculator;
         _pokeApi = pokeApi;
     }
@@ -50,7 +50,7 @@ public class LevelUpWorkflow : WorkflowBase
             return (null, WorkflowResult.Failure(WorkflowId, errors.ToArray()));
 
         var nuzlockeId = request.Parameters.GetString("nuzlocke_id")!;
-        var nuzlockePath = await _fileManager.GetNuzlockePathAsync(nuzlockeId);
+        var nuzlockePath = await _repository.GetNuzlockePathAsync(nuzlockeId);
         if (nuzlockePath == null)
         {
             return (null, WorkflowResult.Failure(WorkflowId,
@@ -62,7 +62,7 @@ public class LevelUpWorkflow : WorkflowBase
 
         return (new WorkflowContext
         {
-            SessionId = nuzlockeId,
+            NuzlockeId = nuzlockeId,
             Parameters = request.Parameters,
             State = state,
             BattleContext = battleContext,
@@ -126,7 +126,7 @@ public class LevelUpWorkflow : WorkflowBase
             pcMember.Stats = newStats;
         }
 
-        await StateManager.SaveStateAsync(context.SessionId, state);
+        await StateManager.SaveStateAsync(context.NuzlockeId, state);
         context.State = state;
 
         context.Result.Mutations.Add(new StateMutation

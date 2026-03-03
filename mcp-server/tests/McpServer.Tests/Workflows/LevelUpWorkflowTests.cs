@@ -104,7 +104,7 @@ public class LevelUpWorkflowTests
     private readonly Mock<IStateManager> _mockState = new();
     private readonly Mock<IPokeApiConnector> _mockPokeApi = new();
     private readonly Mock<IAiProvider> _mockAi = new();
-    private readonly Mock<INuzlockeFileManager> _mockFileManager = new();
+    private readonly Mock<INuzlockeRepository> _mockRepository = new();
     private readonly Mock<IStatsCalculator> _mockCalc = new();
     private readonly Mock<ILogger<LevelUpWorkflow>> _mockLogger = new();
 
@@ -114,7 +114,7 @@ public class LevelUpWorkflowTests
 
     public LevelUpWorkflowTests()
     {
-        _mockFileManager.Setup(f => f.GetNuzlockePathAsync("nuzlocke-1"))
+        _mockRepository.Setup(f => f.GetNuzlockePathAsync("nuzlocke-1"))
             .ReturnsAsync("/tmp/nuzlocke-1");
 
         _mockState.Setup(s => s.GetStateAsync("nuzlocke-1"))
@@ -138,7 +138,7 @@ public class LevelUpWorkflowTests
 
     private LevelUpWorkflow CreateWorkflow() =>
         new(_mockState.Object, _mockPokeApi.Object, _mockAi.Object,
-            _mockFileManager.Object, _mockCalc.Object, _mockLogger.Object);
+            _mockRepository.Object, _mockCalc.Object, _mockLogger.Object);
 
     private static WorkflowParameters MakeParams(object obj)
     {
@@ -151,7 +151,7 @@ public class LevelUpWorkflowTests
         new WorkflowRequest
         {
             WorkflowId = "level_up",
-            SessionId = "nuzlocke-1",
+            NuzlockeId = "nuzlocke-1",
             Language = "en-US",
             Parameters = MakeParams(parameters)
         };

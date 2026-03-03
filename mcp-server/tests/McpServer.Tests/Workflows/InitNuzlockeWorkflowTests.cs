@@ -6,7 +6,6 @@ using es.vargontoc.nuzlocke.ai.Workflows;
 using es.vargontoc.nuzlocke.ai.Workflows.Setup;
 using Microsoft.Extensions.Logging;
 using Moq;
-using System.Text.Json;
 using Xunit;
 
 namespace es.vargontoc.nuzlocke.ai.Tests.Workflows;
@@ -16,183 +15,162 @@ public class InitNuzlockeWorkflowTests
     private readonly Mock<IStateManager> _mockState = new();
     private readonly Mock<IPokeApiConnector> _mockPokeApi = new();
     private readonly Mock<IAiProvider> _mockAi = new();
-    private readonly Mock<INuzlockeFileManager> _mockFileManager = new();
+    private readonly Mock<INuzlockeRepository> _mockRepository = new();
     private readonly Mock<ILogger<InitNuzlockeWorkflow>> _mockLogger = new();
 
-    public InitNuzlockeWorkflowTests()
-    {
-        _mockState.Setup(s => s.GetStateAsync(It.IsAny<string>()))
-            .ReturnsAsync(new NuzlockeState());
-        _mockState.Setup(s => s.GetBattleContextAsync(It.IsAny<string>()))
-            .ReturnsAsync(new BattleContext());
-    }
-
     private InitNuzlockeWorkflow CreateWorkflow() =>
-        new(_mockState.Object, _mockPokeApi.Object, _mockAi.Object, _mockFileManager.Object, _mockLogger.Object);
+        new(_mockState.Object, _mockPokeApi.Object, _mockAi.Object,
+            _mockRepository.Object, _mockLogger.Object);
 
-    private static WorkflowParameters MakeParams(object obj)
-    {
-        var json = JsonSerializer.Serialize(obj);
-        var dict = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json)!;
-        return new WorkflowParameters(dict);
-    }
+    private static NuzlockeMetadata MakeMetadata(string id, bool isInitialized = false, int generation = 1, LockeType lockeType = LockeType.Standard) =>
+        new()
+        {
+            Id = id,
+            Name = "Test Run",
+            Generation = generation,
+            LockeType = lockeType,
+            IsInitialized = isInitialized
+        };
 
-    // --- Validation ---
-
-    [Fact]
-    public void Validate_MissingBasePath_ReturnsError()
-    {
-        var workflow = CreateWorkflow();
-        var errors = workflow.Validate(MakeParams(new { generation = 1 }));
-        Assert.Contains(errors, e => e.Contains("base_path"));
-    }
+    // ─── Validate always returns empty ────────────────────────────────────────
 
     [Fact]
-    public void Validate_MissingGeneration_ReturnsError()
+    public void Validate_AnyParameters_ReturnsNoErrors()
     {
         var workflow = CreateWorkflow();
-        var errors = workflow.Validate(MakeParams(new { base_path = "/tmp/test" }));
-        Assert.Contains(errors, e => e.Contains("generation"));
-    }
-
-    [Fact]
-    public void Validate_GenerationNot1_ReturnsError()
-    {
-        var workflow = CreateWorkflow();
-        var errors = workflow.Validate(MakeParams(new { base_path = "/tmp/test", generation = 2 }));
-        Assert.Contains(errors, e => e.Contains("Only generation 1"));
-    }
-
-    [Fact]
-    public void Validate_ValidParams_ReturnsNoErrors()
-    {
-        var workflow = CreateWorkflow();
-        var errors = workflow.Validate(MakeParams(new { base_path = "/tmp/test", generation = 1 }));
+        var errors = workflow.Validate(new WorkflowParameters(new Dictionary<string, System.Text.Json.JsonElement>()));
         Assert.Empty(errors);
     }
 
-    [Fact]
-    public void Validate_ValidParamsWithLockeType_ReturnsNoErrors()
-    {
-        var workflow = CreateWorkflow();
-        var errors = workflow.Validate(MakeParams(new { base_path = "/tmp/test", generation = 1, locke_type = "hardcore" }));
-        Assert.Empty(errors);
-    }
-
-    // --- Execution ---
+    // ─── Nuzlocke not found ────────────────────────────────────────────────────
 
     [Fact]
-    public async Task Execute_CreatesNuzlockeViaFileManager()
+    public async Task Execute_NuzlockeNotFound_ReturnsFailure()
     {
-        var expectedId = "abc12345_2026-02-15";
-        _mockFileManager.Setup(f => f.CreateNuzlockeAsync(It.IsAny<string>(), 1, "standard"))
-            .ReturnsAsync(expectedId);
-        _mockAi.Setup(a => a.GetCompletionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("Pick Squirtle for Brock.");
+        var nuzlockeId = Guid.NewGuid().ToString();
+        _mockRepository.Setup(r => r.GetMetadataAsync(nuzlockeId))
+            .ReturnsAsync((NuzlockeMetadata?)null);
 
         var workflow = CreateWorkflow();
 
         var result = await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "init_nuzlocke",
-            SessionId = "s1",
-            Parameters = MakeParams(new { base_path = "/tmp/nuzlockes", generation = 1 })
-        });
-
-        Assert.True(result.Success);
-        Assert.Equal(expectedId, result.Data["nuzlocke_id"]);
-        Assert.Equal(1, result.Data["generation"]);
-        Assert.Equal("standard", result.Data["locke_type"]);
-        Assert.Single(result.Mutations);
-        Assert.Equal("nuzlocke_created", result.Mutations[0].Type);
-        _mockFileManager.Verify(f => f.CreateNuzlockeAsync("/tmp/nuzlockes", 1, "standard"), Times.Once);
-    }
-
-    [Fact]
-    public async Task Execute_GeneratesAdvice()
-    {
-        _mockFileManager.Setup(f => f.CreateNuzlockeAsync(It.IsAny<string>(), 1, "standard"))
-            .ReturnsAsync("abc12345_2026-02-15");
-        _mockAi.Setup(a => a.GetCompletionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("Pick Squirtle for an easier time against Brock.");
-
-        var workflow = CreateWorkflow();
-
-        var result = await workflow.ExecuteAsync(new WorkflowRequest
-        {
-            WorkflowId = "init_nuzlocke",
-            SessionId = "s1",
-            Parameters = MakeParams(new { base_path = "/tmp/nuzlockes", generation = 1 })
-        });
-
-        Assert.Equal("Pick Squirtle for an easier time against Brock.", result.Advice);
-    }
-
-    [Fact]
-    public async Task Execute_AdvicePromptContainsGenerationAndLockeType()
-    {
-        string? capturedSystem = null;
-        string? capturedUser = null;
-
-        _mockFileManager.Setup(f => f.CreateNuzlockeAsync(It.IsAny<string>(), 1, "hardcore"))
-            .ReturnsAsync("abc12345_2026-02-15");
-        _mockAi.Setup(a => a.GetCompletionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Callback<string, string, CancellationToken>((sys, usr, _) => { capturedSystem = sys; capturedUser = usr; })
-            .ReturnsAsync("Advice");
-
-        var workflow = CreateWorkflow();
-
-        await workflow.ExecuteAsync(new WorkflowRequest
-        {
-            WorkflowId = "init_nuzlocke",
-            SessionId = "s1",
-            Parameters = MakeParams(new { base_path = "/tmp/nuzlockes", generation = 1, locke_type = "hardcore" })
-        });
-
-        Assert.NotNull(capturedSystem);
-        Assert.Contains("Generation 1", capturedSystem!);
-        Assert.Contains("hardcore", capturedSystem!);
-        Assert.NotNull(capturedUser);
-        Assert.Contains("Generation 1", capturedUser!);
-        Assert.Contains("hardcore", capturedUser!);
-    }
-
-    [Fact]
-    public async Task Execute_ValidationFails_ReturnsFailure()
-    {
-        var workflow = CreateWorkflow();
-
-        var result = await workflow.ExecuteAsync(new WorkflowRequest
-        {
-            WorkflowId = "init_nuzlocke",
-            SessionId = "s1",
-            Parameters = MakeParams(new { }) // missing required params
+            NuzlockeId = nuzlockeId
         });
 
         Assert.False(result.Success);
-        Assert.NotEmpty(result.Errors);
-        _mockFileManager.Verify(f => f.CreateNuzlockeAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>()), Times.Never);
+        Assert.Contains(result.Errors, e => e.Contains(nuzlockeId));
     }
 
+    // ─── Not yet initialized ──────────────────────────────────────────────────
+
     [Fact]
-    public async Task Execute_DefaultLockeType_IsStandard()
+    public async Task Execute_NotInitialized_SavesGameStateAndSetsIsInitialized()
     {
-        _mockFileManager.Setup(f => f.CreateNuzlockeAsync(It.IsAny<string>(), 1, "standard"))
-            .ReturnsAsync("abc12345_2026-02-15");
-        _mockAi.Setup(a => a.GetCompletionAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("Advice");
+        var nuzlockeId = Guid.NewGuid().ToString();
+        var metadata = MakeMetadata(nuzlockeId, isInitialized: false, generation: 1, lockeType: LockeType.Hardcore);
+
+        _mockRepository.Setup(r => r.GetMetadataAsync(nuzlockeId)).ReturnsAsync(metadata);
+        _mockRepository.Setup(r => r.GetGameStateAsync(nuzlockeId)).ReturnsAsync(new NuzlockeState());
+        _mockRepository.Setup(r => r.GetBattleStateAsync(nuzlockeId)).ReturnsAsync((BattleContext?)null);
+        _mockRepository.Setup(r => r.SaveGameStateAsync(nuzlockeId, It.IsAny<NuzlockeState>())).Returns(Task.CompletedTask);
+        _mockRepository.Setup(r => r.SaveMetadataAsync(It.IsAny<NuzlockeMetadata>())).Returns(Task.CompletedTask);
+        _mockRepository.Setup(r => r.UpdateStatusAsync(nuzlockeId, NuzlockeStatus.Active)).ReturnsAsync(true);
 
         var workflow = CreateWorkflow();
 
         var result = await workflow.ExecuteAsync(new WorkflowRequest
         {
             WorkflowId = "init_nuzlocke",
-            SessionId = "s1",
-            Parameters = MakeParams(new { base_path = "/tmp/nuzlockes", generation = 1 })
+            NuzlockeId = nuzlockeId
         });
 
         Assert.True(result.Success);
-        Assert.Equal("standard", result.Data["locke_type"]);
-        _mockFileManager.Verify(f => f.CreateNuzlockeAsync(It.IsAny<string>(), 1, "standard"), Times.Once);
+        Assert.Single(result.Mutations);
+        Assert.Equal("nuzlocke_initialized", result.Mutations[0].Type);
+        Assert.Equal(1, result.Data["generation"]);
+        Assert.Equal("Hardcore", result.Data["locke_type"]);
+
+        _mockRepository.Verify(r => r.SaveMetadataAsync(
+            It.Is<NuzlockeMetadata>(m => m.IsInitialized)), Times.Once);
+        _mockRepository.Verify(r => r.SaveGameStateAsync(nuzlockeId, It.IsAny<NuzlockeState>()), Times.Once);
+        _mockRepository.Verify(r => r.UpdateStatusAsync(nuzlockeId, NuzlockeStatus.Active), Times.Once);
+    }
+
+    [Fact]
+    public async Task Execute_NotInitialized_DoesNotCallAi()
+    {
+        var nuzlockeId = Guid.NewGuid().ToString();
+        var metadata = MakeMetadata(nuzlockeId, isInitialized: false);
+
+        _mockRepository.Setup(r => r.GetMetadataAsync(nuzlockeId)).ReturnsAsync(metadata);
+        _mockRepository.Setup(r => r.GetGameStateAsync(nuzlockeId)).ReturnsAsync(new NuzlockeState());
+        _mockRepository.Setup(r => r.GetBattleStateAsync(nuzlockeId)).ReturnsAsync((BattleContext?)null);
+        _mockRepository.Setup(r => r.SaveGameStateAsync(nuzlockeId, It.IsAny<NuzlockeState>())).Returns(Task.CompletedTask);
+        _mockRepository.Setup(r => r.SaveMetadataAsync(It.IsAny<NuzlockeMetadata>())).Returns(Task.CompletedTask);
+        _mockRepository.Setup(r => r.UpdateStatusAsync(nuzlockeId, NuzlockeStatus.Active)).ReturnsAsync(true);
+
+        var workflow = CreateWorkflow();
+
+        var result = await workflow.ExecuteAsync(new WorkflowRequest
+        {
+            WorkflowId = "init_nuzlocke",
+            NuzlockeId = nuzlockeId
+        });
+
+        Assert.Null(result.Advice);
+        _mockAi.Verify(a => a.GetCompletionAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    // ─── Already initialized ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Execute_AlreadyInitialized_AddsWarningMutation()
+    {
+        var nuzlockeId = Guid.NewGuid().ToString();
+        var metadata = MakeMetadata(nuzlockeId, isInitialized: true);
+
+        _mockRepository.Setup(r => r.GetMetadataAsync(nuzlockeId)).ReturnsAsync(metadata);
+        _mockRepository.Setup(r => r.GetGameStateAsync(nuzlockeId)).ReturnsAsync(new NuzlockeState());
+        _mockRepository.Setup(r => r.GetBattleStateAsync(nuzlockeId)).ReturnsAsync((BattleContext?)null);
+
+        var workflow = CreateWorkflow();
+
+        var result = await workflow.ExecuteAsync(new WorkflowRequest
+        {
+            WorkflowId = "init_nuzlocke",
+            NuzlockeId = nuzlockeId
+        });
+
+        Assert.True(result.Success);
+        Assert.Single(result.Mutations);
+        Assert.Equal("nuzlocke_already_initialized", result.Mutations[0].Type);
+    }
+
+    [Fact]
+    public async Task Execute_AlreadyInitialized_SkipsAdviceAndSave()
+    {
+        var nuzlockeId = Guid.NewGuid().ToString();
+        var metadata = MakeMetadata(nuzlockeId, isInitialized: true);
+
+        _mockRepository.Setup(r => r.GetMetadataAsync(nuzlockeId)).ReturnsAsync(metadata);
+        _mockRepository.Setup(r => r.GetGameStateAsync(nuzlockeId)).ReturnsAsync(new NuzlockeState());
+        _mockRepository.Setup(r => r.GetBattleStateAsync(nuzlockeId)).ReturnsAsync((BattleContext?)null);
+
+        var workflow = CreateWorkflow();
+
+        var result = await workflow.ExecuteAsync(new WorkflowRequest
+        {
+            WorkflowId = "init_nuzlocke",
+            NuzlockeId = nuzlockeId
+        });
+
+        Assert.Null(result.Advice);
+        _mockAi.Verify(a => a.GetCompletionAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _mockRepository.Verify(r => r.SaveMetadataAsync(It.IsAny<NuzlockeMetadata>()), Times.Never);
+        _mockRepository.Verify(r => r.SaveGameStateAsync(It.IsAny<string>(), It.IsAny<NuzlockeState>()), Times.Never);
     }
 }
