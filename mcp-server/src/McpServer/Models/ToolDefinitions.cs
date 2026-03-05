@@ -306,7 +306,6 @@ public static class ToolDefinitions
 - capture_pokemon: Player caught a Pokemon. Parameters: nuzlocke_id (string), species (string, lowercase e.g. 'weedle'), nickname (string), location (string), level (int)
 - item_obtained: Player obtained an item. Parameters: nuzlocke_id (string), item_name (string, lowercase e.g. 'potion'), category (string: 'pokeball','potion','battle','key','tm','other'), quantity (int, default 1), location (string, optional)
 - route_encounter: Consult which Pokemon to catch on a route. Parameters: nuzlocke_id (string), route_name (string), available_pokemon (string array, optional)
-- init_nuzlocke: Start a new Nuzlocke run. Parameters: player_name (string), game_version (string), generation (int, default 1)
 
 IMPORTANT: Always prefer this tool over manual tools (add_to_team, record_encounter) when the user describes a game event, because workflows enforce Nuzlocke rules and generate strategic advice.",
         Parameters = new ToolParameters
@@ -317,7 +316,7 @@ IMPORTANT: Always prefer this tool over manual tools (add_to_team, record_encoun
                 ["workflowId"] = new ToolProperty
                 {
                     Type = "string",
-                    Description = "The workflow to execute (e.g. 'capture_pokemon', 'item_obtained', 'route_encounter', 'init_nuzlocke')"
+                    Description = "The workflow to execute (e.g. 'capture_pokemon', 'item_obtained', 'route_encounter')"
                 },
                 ["parameters"] = new ToolProperty
                 {

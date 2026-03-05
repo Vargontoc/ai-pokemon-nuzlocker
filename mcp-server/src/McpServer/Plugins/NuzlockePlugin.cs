@@ -21,7 +21,7 @@ public class NuzlockePlugin
     [KernelFunction("get_game_state")]
     [Description("Get the current Nuzlocke game state including team, PC storage, deaths, and encounters")]
     [return: Description("JSON containing current team, PC storage, dead Pokemon, and used encounters")]
-    public async Task<string> GetGameStateAsync(string? sessionId = null)
+    public async Task<string> GetGameStateAsync(string sessionId = "")
     {
         var state = string.IsNullOrEmpty(sessionId)
             ? await _stateManager.GetStateAsync()
@@ -39,13 +39,13 @@ public class NuzlockePlugin
     [Description("Add a new Pokemon to the active team (max 6)")]
     [return: Description("Success message or error")]
     public async Task<string> AddToTeamAsync(
-        string? sessionId,
+        string sessionId,
         [Description("Pokemon species name (e.g., 'pikachu', 'charizard')")] string species,
         [Description("Nickname given to the Pokemon")] string nickname,
         [Description("Pokemon level")] int level,
-        [Description("Comma-separated list of moves")] string? moves = null,
-        [Description("Current HP")] int? currentHp = null,
-        [Description("Maximum HP")] int? maxHp = null)
+        [Description("Comma-separated list of moves")] string moves = "",
+        [Description("Current HP")] int currentHp = 0,
+        [Description("Maximum HP")] int maxHp = 0)
     {
         var state = string.IsNullOrEmpty(sessionId)
             ? await _stateManager.GetStateAsync()
@@ -61,9 +61,9 @@ public class NuzlockePlugin
             Species = species,
             Nickname = nickname,
             Level = level,
-            Moves = moves?.Split(',').Select(m => m.Trim()).ToList() ?? new List<string>(),
-            CurrentHP = currentHp ?? 0,
-            MaxHP = maxHp ?? 0
+            Moves = string.IsNullOrEmpty(moves) ? new List<string>() : moves.Split(',').Select(m => m.Trim()).ToList(),
+            CurrentHP = currentHp,
+            MaxHP = maxHp
         };
 
         state.Team.Add(pokemon);
@@ -83,7 +83,7 @@ public class NuzlockePlugin
     [Description("Mark a Pokemon as dead/fainted (permanent in Nuzlocke rules)")]
     [return: Description("Success message or error")]
     public async Task<string> MarkAsDeadAsync(
-        string? sessionId,
+        string sessionId,
         [Description("Nickname of the Pokemon that died")] string nickname,
         [Description("Location where the Pokemon died")] string location,
         [Description("Cause of death description")] string causeOfDeath)
@@ -133,7 +133,7 @@ public class NuzlockePlugin
     [Description("Move a Pokemon from the active team to PC storage")]
     [return: Description("Success message or error")]
     public async Task<string> MoveToPcAsync(
-        string? sessionId,
+        string sessionId,
         [Description("Nickname of the Pokemon to move to PC")] string nickname)
     {
         var state = string.IsNullOrEmpty(sessionId)
@@ -180,10 +180,10 @@ public class NuzlockePlugin
     [Description("Record a route/area encounter (Nuzlocke rule: only first Pokemon per route can be caught)")]
     [return: Description("Success message confirming the encounter was recorded")]
     public async Task<string> RecordEncounterAsync(
-        string? sessionId,
+        string sessionId,
         [Description("Location/route name where the encounter happened")] string location,
-        [Description("Pokemon species encountered")] string? capturedSpecies = null,
-        [Description("Nickname given to captured Pokemon")] string? capturedNickname = null)
+        [Description("Pokemon species encountered (empty if not captured)")] string capturedSpecies = "",
+        [Description("Nickname given to captured Pokemon (empty if not captured)")] string capturedNickname = "")
     {
         var state = string.IsNullOrEmpty(sessionId)
             ? await _stateManager.GetStateAsync()
@@ -202,8 +202,8 @@ public class NuzlockePlugin
         {
             Location = location,
             EncounterUsed = !string.IsNullOrEmpty(capturedSpecies),
-            CapturedSpecies = capturedSpecies,
-            CapturedNickname = capturedNickname,
+            CapturedSpecies = string.IsNullOrEmpty(capturedSpecies) ? null : capturedSpecies,
+            CapturedNickname = string.IsNullOrEmpty(capturedNickname) ? null : capturedNickname,
             EncounterDate = DateTime.UtcNow
         };
 
@@ -227,14 +227,17 @@ public class NuzlockePlugin
     [Description("Start a new battle, clearing any previous battle context")]
     [return: Description("JSON with the new battle context")]
     public async Task<string> StartBattleAsync(
-        string? sessionId,
+        string sessionId,
         [Description("Name of the opponent")] string opponentName,
-        [Description("Nickname of the leading Pokemon (optional)")] string? activePokemonNickname = null,
-        [Description("Battle type: wild, trainer, gym_leader, rival, elite_four (optional)")] string? battleType = null)
+        [Description("Nickname of the leading Pokemon (empty if not specified)")] string activePokemonNickname = "",
+        [Description("Battle type: wild, trainer, gym_leader, rival, elite_four (empty if not specified)")] string battleType = "")
     {
+        var nickname = string.IsNullOrEmpty(activePokemonNickname) ? null : activePokemonNickname;
+        var type = string.IsNullOrEmpty(battleType) ? null : battleType;
+
         var bc = string.IsNullOrEmpty(sessionId)
-            ? await _stateManager.StartBattleAsync(opponentName, activePokemonNickname, battleType)
-            : await _stateManager.StartBattleAsync(sessionId, opponentName, activePokemonNickname, battleType);
+            ? await _stateManager.StartBattleAsync(opponentName, nickname, type)
+            : await _stateManager.StartBattleAsync(sessionId, opponentName, nickname, type);
 
         return JsonSerializer.Serialize(new { success = true, message = $"Battle started against {opponentName}", battleContext = bc });
     }
@@ -243,7 +246,7 @@ public class NuzlockePlugin
     [Description("Add a log entry to the current battle")]
     [return: Description("Success or failure message")]
     public async Task<string> AddBattleLogAsync(
-        string? sessionId,
+        string sessionId,
         [Description("Description of the battle event")] string logEntry)
     {
         var success = string.IsNullOrEmpty(sessionId)
@@ -256,7 +259,7 @@ public class NuzlockePlugin
     [KernelFunction("end_battle")]
     [Description("End the current battle and clear battle context")]
     [return: Description("Success or failure message")]
-    public async Task<string> EndBattleAsync(string? sessionId = null)
+    public async Task<string> EndBattleAsync(string sessionId = "")
     {
         var success = string.IsNullOrEmpty(sessionId)
             ? await _stateManager.EndBattleAsync()

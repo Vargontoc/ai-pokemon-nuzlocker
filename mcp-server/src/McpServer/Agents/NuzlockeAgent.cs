@@ -46,7 +46,6 @@ Examples of when to use execute_workflow:
 - ""I caught a Weedle at level 3 on Route 2 and named it Stinger"" → execute_workflow with workflowId=""capture_pokemon"", parameters={""nuzlocke_id"":""<id>"",""species"":""weedle"",""nickname"":""Stinger"",""location"":""Route 2"",""level"":3}
 - ""I found 2 potions in Viridian City"" → execute_workflow with workflowId=""item_obtained"", parameters={""nuzlocke_id"":""<id>"",""item_name"":""potion"",""quantity"":2,""category"":""potion"",""location"":""Viridian City""}
 - ""I'm about to enter Route 3, what Pokemon can I find?"" → execute_workflow with workflowId=""route_encounter"", parameters={""nuzlocke_id"":""<id>"",""route_name"":""Route 3""}
-- ""Start a new Nuzlocke! I'm Red playing Pokemon Red"" → execute_workflow with workflowId=""init_nuzlocke"", parameters={""player_name"":""Red"",""game_version"":""red"",""generation"":1}
 - ""Sparky just leveled up to 25!"" → execute_workflow with workflowId=""level_up"", parameters={""nuzlocke_id"":""<id>"",""nickname"":""Sparky"",""new_level"":25}
 - ""My Pikachu leveled up"" (no level given) → execute_workflow with workflowId=""level_up"", parameters={""nuzlocke_id"":""<id>"",""nickname"":""Pikachu""} (omit new_level to auto-increment)
 - ""Be more cheerful"" or ""change your personality to Enthusiastic"" → execute_workflow with workflowId=""set_personality"", parameters={""nuzlocke_id"":""<id>"",""personality"":""Enthusiastic""}
@@ -128,7 +127,15 @@ Be concise but insightful. Prioritize survival and strategic planning. Remember 
     /// Get strategic advice based on user question and current game state
     /// Uses function calling to interact with game state if needed
     /// </summary>
-    public async Task<string> GetAdviceAsync(string userQuestion, CancellationToken cancellationToken = default, string? sessionId = null, string? nuzlockeId = null, string lng = "en-EN")
+    /// <summary>Maps a tool name to its event source category for WS notifications.</summary>
+    private static string GetToolSource(string toolName) => toolName switch
+    {
+        "get_pokemon" or "get_move" or "get_type" => "pokeapi",
+        "execute_workflow" => "workflow",
+        _ => "database"
+    };
+
+    public async Task<string> GetAdviceAsync(string userQuestion, CancellationToken cancellationToken = default, string? sessionId = null, string? nuzlockeId = null, string lng = "en-EN", Func<string, string, Task>? onToolCall = null)
     {
         try
         {
@@ -279,6 +286,12 @@ Provide strategic advice based on the current state and the user's question on l
                         {
                             _logger.LogDebug(ex, "Failed to inject sessionId into tool arguments; proceeding without it");
                         }
+                    }
+
+                    if (onToolCall != null)
+                    {
+                        try { await onToolCall(toolCall.Name, GetToolSource(toolCall.Name)); }
+                        catch (Exception cbEx) { _logger.LogDebug(cbEx, "onToolCall callback failed for {Tool}", toolCall.Name); }
                     }
 
                     var result = await _toolExecutor.ExecuteAsync(toolCall);

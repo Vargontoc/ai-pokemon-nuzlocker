@@ -381,6 +381,35 @@ public class WorkflowEngineTests
     }
 
     [Fact]
+    public async Task ExecuteAsync_WithWebSocket_EmitsWorkflowStartBeforeEvent()
+    {
+        var executionOrder = new List<string>();
+
+        var mockWorkflow = new Mock<IWorkflow>();
+        mockWorkflow.Setup(w => w.WorkflowId).Returns("test_workflow");
+        mockWorkflow.Setup(w => w.ExecuteAsync(It.IsAny<WorkflowRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WorkflowResult { WorkflowId = "test_workflow", Success = true });
+
+        _mockConnectionManager.Setup(c => c.HasConnection("s1")).Returns(true);
+        _mockConnectionManager.Setup(c => c.SendAsync("s1", It.IsAny<WorkflowStartMessage>(), It.IsAny<CancellationToken>()))
+            .Callback<string, object, CancellationToken>((_, _, _) => executionOrder.Add("workflow_start"))
+            .ReturnsAsync(true);
+        _mockConnectionManager.Setup(c => c.SendAsync("s1", It.IsAny<WorkflowEventMessage>(), It.IsAny<CancellationToken>()))
+            .Callback<string, object, CancellationToken>((_, _, _) => executionOrder.Add("workflow_event"))
+            .ReturnsAsync(true);
+
+        var engine = new WorkflowEngine(new[] { mockWorkflow.Object }, _mockConnectionManager.Object, _mockDispatcher.Object, _mockLogger.Object);
+
+        await engine.ExecuteAsync(new WorkflowRequest { WorkflowId = "test_workflow", NuzlockeId = "s1" });
+
+        _mockConnectionManager.Verify(c => c.SendAsync("s1",
+            It.Is<WorkflowStartMessage>(m => m.Type == "workflow_start" && m.WorkflowId == "test_workflow"),
+            It.IsAny<CancellationToken>()), Times.Once);
+
+        Assert.Equal(new[] { "workflow_start", "workflow_event" }, executionOrder);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_NoCorrelationId_GeneratesOneForEvent()
     {
         var mockWorkflow = new Mock<IWorkflow>();

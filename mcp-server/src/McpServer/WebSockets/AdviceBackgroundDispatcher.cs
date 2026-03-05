@@ -68,24 +68,38 @@ public class AdviceBackgroundDispatcher : IAdviceDispatcher
             return;
         }
 
-        // Validate that the nuzlocke session exists before proceeding
-        if (!string.IsNullOrEmpty(request.NuzlockeId))
+        // Validate nuzlocke exists and is initialized (defense-in-depth — controller validates first)
         {
             using var validationScope = _scopeFactory.CreateScope();
             var repository = validationScope.ServiceProvider.GetRequiredService<INuzlockeRepository>();
-            var nuzlockePath = await repository.GetNuzlockePathAsync(request.NuzlockeId);
+            var metadata = await repository.GetMetadataAsync(request.NuzlockeId);
 
-            if (nuzlockePath == null)
+            if (metadata == null)
             {
                 _logger.LogWarning(
-                    "Nuzlocke not found for nuzlocke {NuzlockeId}, cancelling advice for correlation {CorrelationId}",
+                    "Nuzlocke not found: {NuzlockeId}, cancelling advice for correlation {CorrelationId}",
                     request.NuzlockeId, request.CorrelationId);
 
                 await _connectionManager.SendAsync(request.NuzlockeId, new AdviceErrorMessage
                 {
                     Type = "advice_error",
                     CorrelationId = request.CorrelationId,
-                    Error = $"Nuzlocke not found: {request.NuzlockeId}. Ensure init_nuzlocke was called first."
+                    Error = $"Nuzlocke no encontrado: {request.NuzlockeId}."
+                });
+                return;
+            }
+
+            if (!metadata.IsInitialized)
+            {
+                _logger.LogWarning(
+                    "Nuzlocke {NuzlockeId} is not initialized, cancelling advice for correlation {CorrelationId}",
+                    request.NuzlockeId, request.CorrelationId);
+
+                await _connectionManager.SendAsync(request.NuzlockeId, new AdviceErrorMessage
+                {
+                    Type = "advice_error",
+                    CorrelationId = request.CorrelationId,
+                    Error = "La partida no está inicializada."
                 });
                 return;
             }
@@ -109,7 +123,18 @@ public class AdviceBackgroundDispatcher : IAdviceDispatcher
             using var scope = _scopeFactory.CreateScope();
             var agent = scope.ServiceProvider.GetRequiredService<NuzlockeAgent>();
 
-            var advice = await agent.GetAdviceAsync(request.Question, CancellationToken.None, request.NuzlockeId, request.Language);
+            async Task OnToolCall(string toolName, string source)
+            {
+                await _connectionManager.SendAsync(request.NuzlockeId, new AgentToolCallMessage
+                {
+                    Type = "agent_tool_call",
+                    CorrelationId = request.CorrelationId,
+                    ToolName = toolName,
+                    Source = source
+                });
+            }
+
+            var advice = await agent.GetAdviceAsync(request.Question, CancellationToken.None, request.NuzlockeId, request.Language, onToolCall: OnToolCall);
 
             await _connectionManager.SendAsync(request.NuzlockeId, new AdviceEndMessage
             {

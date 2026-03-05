@@ -43,8 +43,11 @@ public class AdviceBackgroundDispatcherTests
         mockState.Setup(s => s.GetBattleContextAsync())
             .ReturnsAsync(new BattleContext());
 
-        _mockRepository.Setup(f => f.GetNuzlockePathAsync(It.IsAny<string>()))
-            .ReturnsAsync(nuzlockePathResult);
+        // Simulate nuzlocke found+initialized when path is non-null, not found otherwise
+        _mockRepository.Setup(f => f.GetMetadataAsync(It.IsAny<string>()))
+            .ReturnsAsync(nuzlockePathResult != null
+                ? new NuzlockeMetadata { Id = "session1", Name = "Test", IsInitialized = true }
+                : (NuzlockeMetadata?)null);
 
         var services = new ServiceCollection();
         services.AddScoped<IAiProvider>(_ => _mockAiProvider.Object);
@@ -301,7 +304,7 @@ public class AdviceBackgroundDispatcherTests
         // Should send advice_error with nuzlocke not found message
         _mockConnectionManager.Verify(
             c => c.SendAsync("invalid_session",
-                It.Is<AdviceErrorMessage>(m => m.Type == "advice_error" && m.Error.Contains("Nuzlocke not found")),
+                It.Is<AdviceErrorMessage>(m => m.Type == "advice_error" && m.Error.Contains("Nuzlocke no encontrado")),
                 It.IsAny<CancellationToken>()),
             Times.Once);
 
@@ -311,6 +314,56 @@ public class AdviceBackgroundDispatcherTests
                 It.Is<AdviceStartMessage>(m => m.Type == "advice_start"),
                 It.IsAny<CancellationToken>()),
             Times.Never);
+    }
+
+    [Fact]
+    public async Task DispatchAgentAdvice_WithToolCalls_SendsAgentToolCallMessage()
+    {
+        _mockConnectionManager.Setup(c => c.HasConnection("session1")).Returns(true);
+        _mockConnectionManager.Setup(c => c.SendAsync("session1", It.IsAny<AdviceWebSocketMessage>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        // First AI call: requests get_game_state tool. Second: returns text.
+        var callCount = 0;
+        _mockAiProvider.Setup(a => a.GetCompletionWithToolsAsync(
+                It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<IEnumerable<ToolDefinition>>(),
+                It.IsAny<List<ToolCallResult>?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() =>
+            {
+                callCount++;
+                if (callCount == 1)
+                    return new AiResponse
+                    {
+                        ToolCalls = new List<ToolCall>
+                        {
+                            new() { Id = "tc1", Name = "get_game_state", ArgumentsJson = "{}" }
+                        }
+                    };
+                return new AiResponse { TextResponse = "Your team looks good!" };
+            });
+
+        var dispatcher = CreateDispatcherWithAgent();
+
+        dispatcher.DispatchAgentAdvice(new AgentAdviceDispatchRequest
+        {
+            CorrelationId = "corr_tools",
+            NuzlockeId = "session1",
+            Question = "What is my team?",
+            Language = "en-US"
+        });
+
+        await Task.Delay(1000);
+
+        _mockConnectionManager.Verify(
+            c => c.SendAsync("session1",
+                It.Is<AgentToolCallMessage>(m =>
+                    m.Type == "agent_tool_call" &&
+                    m.ToolName == "get_game_state" &&
+                    m.Source == "database"),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     private static async IAsyncEnumerable<string> AsyncChunks(params string[] chunks)

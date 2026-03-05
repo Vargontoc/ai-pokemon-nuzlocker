@@ -28,6 +28,30 @@ public class AdviceErrorMessage : AdviceWebSocketMessage
     public required string Error { get; set; }
 }
 
+/// <summary>
+/// Sent immediately before a workflow begins execution.
+/// Front can use this to show a loading/progress indicator for the specific workflow.
+/// </summary>
+public class WorkflowStartMessage : AdviceWebSocketMessage
+{
+    public required string WorkflowId { get; set; }
+}
+
+/// <summary>
+/// Sent each time the agent calls a tool during an advice request.
+/// Allows front to show real-time progress of what the agent is querying.
+/// </summary>
+public class AgentToolCallMessage : AdviceWebSocketMessage
+{
+    public required string ToolName { get; set; }
+    /// <summary>"database", "pokeapi", or "workflow"</summary>
+    public required string Source { get; set; }
+}
+
+/// <summary>
+/// Sent when a workflow completes (success or failure).
+/// Contains the resulting state mutations and any data or errors.
+/// </summary>
 public class WorkflowEventMessage : AdviceWebSocketMessage
 {
     public required string WorkflowId { get; set; }

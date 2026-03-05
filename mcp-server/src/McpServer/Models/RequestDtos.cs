@@ -1,6 +1,6 @@
 namespace es.vargontoc.nuzlocke.ai.Models;
 
-public record AdviceRequest(string Question, string? NuzlockeId = null, string? Language = "en-US");
+public record AdviceRequest(string Question, string NuzlockeId, string? Language = "en-US");
 
 public record CreateSessionRequest(
     string Name,

@@ -53,6 +53,8 @@ public class WorkflowEngine : IWorkflowEngine
         _logger.LogInformation("Executing workflow {WorkflowId} for nuzlocke {NuzlockeId}",
             request.WorkflowId, request.NuzlockeId);
 
+        await EmitWorkflowStartAsync(request.NuzlockeId, request.WorkflowId);
+
         var sw = Stopwatch.StartNew();
         var result = await workflow.ExecuteAsync(request, ct);
         sw.Stop();
@@ -89,6 +91,8 @@ public class WorkflowEngine : IWorkflowEngine
 
         _logger.LogInformation("Executing deterministic workflow {WorkflowId} with async advice for nuzlocke {NuzlockeId}",
             request.WorkflowId, nuzlockeId);
+
+        await EmitWorkflowStartAsync(nuzlockeId, request.WorkflowId);
 
         var sw = Stopwatch.StartNew();
         var deterministicResult = await workflow.ExecuteDeterministicAsync(request, ct);
@@ -127,6 +131,19 @@ public class WorkflowEngine : IWorkflowEngine
         await EmitWorkflowEventAsync(nuzlockeId, deterministicResult.Result);
 
         return deterministicResult.Result;
+    }
+
+    private async Task EmitWorkflowStartAsync(string nuzlockeId, string workflowId)
+    {
+        if (!_connectionManager.HasConnection(nuzlockeId))
+            return;
+
+        await _connectionManager.SendAsync(nuzlockeId, new WorkflowStartMessage
+        {
+            Type = "workflow_start",
+            CorrelationId = Guid.NewGuid().ToString("N"),
+            WorkflowId = workflowId
+        });
     }
 
     private async Task EmitWorkflowEventAsync(string nuzlockeId, WorkflowResult result)

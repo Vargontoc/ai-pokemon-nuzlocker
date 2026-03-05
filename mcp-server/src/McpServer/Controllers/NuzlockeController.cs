@@ -1,5 +1,7 @@
+using es.vargontoc.nuzlocke.ai.Agents;
 using es.vargontoc.nuzlocke.ai.Models;
 using es.vargontoc.nuzlocke.ai.Services;
+using es.vargontoc.nuzlocke.ai.WebSockets;
 using Microsoft.AspNetCore.Mvc;
 
 namespace es.vargontoc.nuzlocke.ai.Controllers;
@@ -111,6 +113,90 @@ public class NuzlockeController : ControllerBase
     }
 
     /// <summary>
+    /// Obtener el equipo activo (party) de una partida.
+    /// </summary>
+    /// <param name="id">UUID de la partida.</param>
+    [HttpGet("{id}/party")]
+    [ProducesResponseType(typeof(List<TeamMember>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> GetParty(
+        string id,
+        [FromServices] INuzlockeRepository repository)
+    {
+        var metadata = await repository.GetMetadataAsync(id);
+        if (metadata == null) return NotFound();
+        if (!metadata.IsInitialized)
+            return Conflict(new { error = "La partida no está inicializada. Conéctate primero via WebSocket (/ws/advice)." });
+
+        var state = await repository.GetGameStateAsync(id);
+        return Ok(state.Team);
+    }
+
+    /// <summary>
+    /// Obtener los Pokémon almacenados en el PC de una partida.
+    /// </summary>
+    /// <param name="id">UUID de la partida.</param>
+    [HttpGet("{id}/pc")]
+    [ProducesResponseType(typeof(List<StoredPokemon>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> GetPc(
+        string id,
+        [FromServices] INuzlockeRepository repository)
+    {
+        var metadata = await repository.GetMetadataAsync(id);
+        if (metadata == null) return NotFound();
+        if (!metadata.IsInitialized)
+            return Conflict(new { error = "La partida no está inicializada. Conéctate primero via WebSocket (/ws/advice)." });
+
+        var state = await repository.GetGameStateAsync(id);
+        return Ok(state.PCStorage);
+    }
+
+    /// <summary>
+    /// Obtener el inventario de objetos de una partida.
+    /// </summary>
+    /// <param name="id">UUID de la partida.</param>
+    [HttpGet("{id}/inventory")]
+    [ProducesResponseType(typeof(List<InventoryItem>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> GetInventory(
+        string id,
+        [FromServices] INuzlockeRepository repository)
+    {
+        var metadata = await repository.GetMetadataAsync(id);
+        if (metadata == null) return NotFound();
+        if (!metadata.IsInitialized)
+            return Conflict(new { error = "La partida no está inicializada. Conéctate primero via WebSocket (/ws/advice)." });
+
+        var state = await repository.GetGameStateAsync(id);
+        return Ok(state.Inventory);
+    }
+
+    /// <summary>
+    /// Obtener los Pokémon muertos (cementerio Nuzlocke) de una partida.
+    /// </summary>
+    /// <param name="id">UUID de la partida.</param>
+    [HttpGet("{id}/graveyard")]
+    [ProducesResponseType(typeof(List<DeadPokemon>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> GetGraveyard(
+        string id,
+        [FromServices] INuzlockeRepository repository)
+    {
+        var metadata = await repository.GetMetadataAsync(id);
+        if (metadata == null) return NotFound();
+        if (!metadata.IsInitialized)
+            return Conflict(new { error = "La partida no está inicializada. Conéctate primero via WebSocket (/ws/advice)." });
+
+        var state = await repository.GetGameStateAsync(id);
+        return Ok(state.DeadPokemon);
+    }
+
+    /// <summary>
     /// Eliminar una partida Nuzlocke y toda su estructura de datos.
     /// </summary>
     /// <remarks>
@@ -126,5 +212,150 @@ public class NuzlockeController : ControllerBase
     {
         var ok = await repository.DeleteAsync(id);
         return ok ? NoContent() : NotFound();
+    }
+
+     private readonly ILogger<NuzlockeController> _logger;
+
+    public NuzlockeController(ILogger<NuzlockeController> logger)
+    {
+        _logger = logger;
+    }
+
+    /// <summary>
+    /// Despacha una petición de consejo asíncrono. La respuesta del LLM se envía por WebSocket.
+    /// </summary>
+    /// <remarks>
+    /// Valida que el nuzlocke existe, está inicializado y tiene una sesión WebSocket activa.
+    /// Devuelve un `correlationId` inmediatamente. La respuesta llega via WebSocket (`ws://host/ws/advice?nuzlockeId=id`).
+    ///
+    /// Ejemplo:
+    ///
+    ///     POST /nuzlocke/advice
+    ///     {
+    ///       "question": "¿Uso a Sparky contra Misty?",
+    ///       "nuzlockeId": "abc-123",
+    ///       "language": "es-ES"
+    ///     }
+    /// </remarks>
+    [HttpPost("advice")]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> GetAdvice(
+        [FromBody] AdviceRequest request,
+        [FromServices] IAdviceDispatcher dispatcher,
+        [FromServices] INuzlockeRepository repository,
+        [FromServices] IAdviceConnectionManager connectionManager)
+    {
+        if (string.IsNullOrWhiteSpace(request.NuzlockeId))
+            return BadRequest(new { error = "El campo 'nuzlockeId' es obligatorio." });
+
+        var metadata = await repository.GetMetadataAsync(request.NuzlockeId);
+        if (metadata == null)
+            return NotFound(new { error = $"Nuzlocke no encontrado: '{request.NuzlockeId}'." });
+
+        if (!metadata.IsInitialized)
+            return Conflict(new { error = "La partida no está inicializada. Conéctate primero via WebSocket (/ws/advice)." });
+
+        if (!connectionManager.HasConnection(request.NuzlockeId))
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new { error = "No hay sesión WebSocket activa para este nuzlocke. Conéctate a /ws/advice primero." });
+
+        var correlationId = Guid.NewGuid().ToString("N");
+        var lng = request.Language ?? "en-US";
+
+        _logger.LogInformation(
+            "Dispatching async agent advice for nuzlocke {NuzlockeId}, correlationId {CorrelationId}",
+            request.NuzlockeId, correlationId);
+
+        dispatcher.DispatchAgentAdvice(new AgentAdviceDispatchRequest
+        {
+            CorrelationId = correlationId,
+            NuzlockeId = request.NuzlockeId,
+            Question = request.Question,
+            Language = lng
+        });
+
+        return Accepted(new { question = request.Question, correlationId });
+    }
+
+    /// <summary>
+    /// Streaming de consejo de IA como Server-Sent Events (SSE).
+    /// </summary>
+    /// <remarks>
+    /// Valida que el nuzlocke existe y está inicializado antes de abrir el stream.
+    /// Devuelve `Content-Type: text/event-stream`. Cada chunk: `data: {text}\n\n`.
+    /// Finaliza con `event: end\ndata: [DONE]\n\n`.
+    ///
+    /// Ejemplo:
+    ///
+    ///     POST /nuzlocke/advice/stream
+    ///     {
+    ///       "question": "¿Cuál es el mejor movimiento contra Brock?",
+    ///       "nuzlockeId": "abc-123",
+    ///       "language": "es-ES"
+    ///     }
+    /// </remarks>
+    [HttpPost("advice/stream")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task StreamAdvice(
+        [FromBody] AdviceRequest request,
+        [FromServices] NuzlockeAgent agent,
+        [FromServices] INuzlockeRepository repository,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.NuzlockeId))
+        {
+            Response.StatusCode = StatusCodes.Status400BadRequest;
+            await Response.WriteAsJsonAsync(new { error = "El campo 'nuzlockeId' es obligatorio." }, ct);
+            return;
+        }
+
+        var metadata = await repository.GetMetadataAsync(request.NuzlockeId);
+        if (metadata == null)
+        {
+            Response.StatusCode = StatusCodes.Status404NotFound;
+            await Response.WriteAsJsonAsync(new { error = $"Nuzlocke no encontrado: '{request.NuzlockeId}'." }, ct);
+            return;
+        }
+
+        if (!metadata.IsInitialized)
+        {
+            Response.StatusCode = StatusCodes.Status409Conflict;
+            await Response.WriteAsJsonAsync(new { error = "La partida no está inicializada. Conéctate primero via WebSocket (/ws/advice)." }, ct);
+            return;
+        }
+
+        _logger.LogInformation("POST /nuzlocke/advice/stream: {Question}, nuzlockeId={NuzlockeId}",
+            request.Question, request.NuzlockeId);
+
+        Response.Headers["Cache-Control"] = "no-cache";
+        Response.ContentType = "text/event-stream";
+
+        try
+        {
+            await foreach (var chunk in agent.StreamAdviceAsync(request.Question, ct, request.NuzlockeId))
+            {
+                if (ct.IsCancellationRequested) break;
+                await Response.WriteAsync($"data: {chunk.Replace("\n", "\\n")}\n\n", ct);
+                await Response.Body.FlushAsync(ct);
+            }
+
+            await Response.WriteAsync("event: end\ndata: [DONE]\n\n", ct);
+            await Response.Body.FlushAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // Client cancelled — no response needed
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error while streaming advice for nuzlocke {NuzlockeId}", request.NuzlockeId);
+        }
     }
 }
