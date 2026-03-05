@@ -1,30 +1,21 @@
-## Sprint Review [2026-03-03-Desplegable-Info]
+## Sprint Review [2026-03-xx-Chat-Events]
 
 ### Objetivos
-- [ ] La linea de separación de la  seccion de juego y la del chart que pueda ser desplazada por el usuario.
-- [ ] Desplegable junto al recuadro Game Window
-- [ ] El desplegable sera un panel pequeño con tres opciones (PC, Inventario, Graveyard)
-- [ ] Al pulsar sobre una de ellas obtendra la información requerida llamando a los endpoints correspondientes
-- [ ] Al obtener la informacion se renderizaran en un modal pop-up en diseño de grilla.
-    - [ ] IconCard para el inventario, con el nombre del item y la cantidad. 
-    - [ ] PokemonCard para el PC y Graveyard. Se mostrará el especie, nombre, nivel y una imagen del pokemon. 
+- [ ] Implementar la renderización dinámica y estilizada de los diferentes **Eventos** del Nuzlocke en el componente de Chat (`ChatMessageBubble.vue` u otros dedicados).
+- [ ] Mapear los identificadores únicos de evento que enviará el backend (ej. inicio de batalla, uso de objeto, captura, muerte de un Pokémon, etc.) a plantillas visuales específicas dentro del historial de mensajes (ej. colores de fondo diferenciados, iconos representativos, avatares o sprites si procede).
+- [ ] Asegurarse de que el renderizado de estos eventos interactúe armónicamente con la burbuja de texto genérica del Maestro IA y del Usuario.
+- [ ] Documentar o definir la lista de **eventIds** principales soportados por el frontend en este sprint, alineado con el motor del emulador.
+
+### Documentacion
+- [ ] En localhost:5000/swagger se pueden encontrar los distintos eventos que puede recibir.
 
 ### Aprobación Sprint review
-- [ ] Test unitarios validando la emisión del chat usando la UI.
-- [ ] Test unitarios comprobando la renderización de mensajes desde el servidor al cliente.
+- [ ] Verificación visual de los componentes de eventos mutando mediante test controlados o inyectando los WS payloads manualmente.
 
 ### Riesgos
-- [ ] Lógica compleja de scrolling en el historial del chat al agolparse mensajes rápidos.
-- [ ] Dependencia no instalada de Pinia si se elige esa ruta.
+- [ ] La variedad de eventos y payloads puede complicar el parseo si la estructura de datos que viaja por el socket desde el agente de PokeAPI varía considerablemente entre un evento y otro.
 
 ### Sugerencias para iteraciones futuras
-- [ ] Implementar la Interfaz de Chat interactiva en la parte inferior derecha:
-    - [ ] Caja de texto `ChatInput` funcional (poder escribir mensajes y enviarlos a través del WebSocket `sendMessage`).
-    - [ ] Listado/Área superior del chat con Auto-Scroll para renderizar la conversación entre el Jugador y el "Maestro IA".
-- [ ] Parsear mensajes de WebSockets (DTO `onmessage`) como eventos de Frontend e inyectarlos en la UI de la lista de Chat.
-- [ ] Panel Lateral / Pestañas (Party, PC, Graveyard):
-    - [ ] Configurar un sistema de State Management (ej. `Pinia`) o Composition Local para el estado Global de los Pokémon.
-    - [ ] Componente visual de lista o Grid para mostrar equipos simulados.
-- [ ] Vía Emulador Web Integrado (EmulatorJS).
-- [ ] Vía Desktop App (Electron.js / Tauri) permitiendo `transparent: true`.
-- [ ] TTS interactivo leyendo los mensajes en voz alta.
+- [ ] Panel Lateral / Pestañas (Party, PC, Graveyard) mediante un estado global como Pinia (ahora mismo usando Axios directos al Backend REST temporalmente, convendría centralizar).
+- [ ] Vía Emulador Web Integrado (EmulatorJS) inyectado en la Game Window.
+- [ ] TTS activo y reactivo leyendo los mensajes de la IA por voz en el navegador.
