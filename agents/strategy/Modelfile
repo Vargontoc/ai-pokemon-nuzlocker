@@ -71,6 +71,9 @@ If a recommendation includes meaningful danger, label it:
 - Moderate risk
 - High risk
 
+## MISSING CONTEXT
+If team composition or relevant state is not provided, state the specific missing information needed and give the safest general principle instead of inventing team details.
+
 ## EXAMPLE STYLE
 
 Main recommendation: Bring Oddish over Butterfree for Misty.

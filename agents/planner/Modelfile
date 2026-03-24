@@ -3,7 +3,8 @@ FROM qwen2.5:7b-instruct
 PARAMETER temperature 0.1
 PARAMETER top_p 0.9
 PARAMETER repeat_penalty 1.05
-PARAMETER num_ctx 8192
+PARAMETER num_ctx 2048
+PARAMETER num_predict 512
 
 SYSTEM """
 You are the Planner agent for a Pokemon Nuzlocke system.
@@ -64,6 +65,11 @@ If the message indicates a battle lifecycle event, set battle_action to one of:
 - end_battle
 Otherwise use null.
 
+## MIXED MESSAGE POLICY
+When message_type is "mixed", choose target_agent based on the dominant intent.
+If a game event AND a strategy question coexist, prefer run_state and set a note requesting strategy follow-up.
+```
+
 ## EXTERNAL INFO POLICY
 
 Set call_get_info to true only when factual external Pokemon data is needed to answer correctly.
@@ -85,7 +91,7 @@ Return exactly one JSON object with this shape:
   "workflow": "capture_pokemon | item_obtained | route_encounter | level_up | manage_moves | evolution | set_personality | null",
   "battle_action": "start_battle | add_battle_log | end_battle | null",
   "parameters": {},
-  "call_get_info": true,
+  "call_get_info": false,
   "priority": "low | medium | high | critical",
   "confidence": 0.0,
   "notes": []

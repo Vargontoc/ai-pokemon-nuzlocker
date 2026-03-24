@@ -1,80 +1,67 @@
+x-agents-defaults: &agent-defaults
+  build:
+    context: ./agents
+    dockerfile: Dockerfile
+  working_dir: /app
+  entrypoint: ["/bin/sh", "/app/register-agent.sh"]
+  networks:
+    - shared_agents_net
+  restart: "on-failure:5"
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "50m"
+      max-file: 5
+ 
 services:
 
   # Nuzlocke Planner Agent
   register-agent-nuzlocke-planner:
-    build:
-      context: ./agents
-      dockerfile: Dockerfile
+    <<: *agent-defaults
     container_name: register-agent-nuzlocke-planner
-    working_dir: /app
     volumes:
       - ./agents/planner:/app/model:ro
       - ./agents/register-agent.sh:/app/register-agent.sh:ro
-    entrypoint: [ "/bin/sh", "/app/register-agent.sh" ]
     environment:
       - AGENT_NAME=ai-pokemon/agent-nuzlocke-planner
       - MODELFILE_PATH=/app/model/Modelfile
       - OLLAMA_HOST=http://ollama:11434
-    networks:
-      - shared_agents_net
-    restart: "no"
 
   # Nuzlocke Battle Agent
   register-agent-nuzlocke-battle:
-    build:
-      context: ./agents
-      dockerfile: Dockerfile
+    <<: *agent-defaults
     container_name: register-agent-nuzlocke-battle
-    working_dir: /app
     volumes:
       - ./agents/battle:/app/model:ro
       - ./agents/register-agent.sh:/app/register-agent.sh:ro
-    entrypoint: [ "/bin/sh", "/app/register-agent.sh" ]
     environment:
       - AGENT_NAME=ai-pokemon/agent-nuzlocke-battle
       - MODELFILE_PATH=/app/model/Modelfile
       - OLLAMA_HOST=http://ollama:11434
-    networks:
-      - shared_agents_net
-    restart: "no"
 
   # Nuzlocke Strategy Agent
   register-agent-nuzlocke-strategy:
-    build:
-      context: ./agents
-      dockerfile: Dockerfile
+    <<: *agent-defaults
     container_name: register-agent-nuzlocke-strategy
-    working_dir: /app
     volumes:
       - ./agents/strategy:/app/model:ro
       - ./agents/register-agent.sh:/app/register-agent.sh:ro
-    entrypoint: [ "/bin/sh", "/app/register-agent.sh" ]
     environment:
       - AGENT_NAME=ai-pokemon/agent-nuzlocke-strategy
       - MODELFILE_PATH=/app/model/Modelfile
       - OLLAMA_HOST=http://ollama:11434
-    networks:
-      - shared_agents_net
-    restart: "no"
 
   # Nuzlocke Composer Agent
   register-agent-nuzlocke-composer:
-    build:
-      context: ./agents
-      dockerfile: Dockerfile
+    <<: *agent-defaults
     container_name: register-agent-nuzlocke-composer
-    working_dir: /app
     volumes:
       - ./agents/composer:/app/model:ro
       - ./agents/register-agent.sh:/app/register-agent.sh:ro
-    entrypoint: [ "/bin/sh", "/app/register-agent.sh" ]
     environment:
       - AGENT_NAME=ai-pokemon/agent-nuzlocke-composer
       - MODELFILE_PATH=/app/model/Modelfile
       - OLLAMA_HOST=http://ollama:11434
-    networks:
-      - shared_agents_net
-    restart: "no"
 
 networks:
   shared_agents_net:

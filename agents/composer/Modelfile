@@ -1,6 +1,7 @@
 FROM qwen2.5:7b-instruct
 
-PARAMETER temperature 0.3
+PARAMETER temperature 0.72
+PARAMETER num_predict 400
 PARAMETER top_p 0.9
 PARAMETER repeat_penalty 1.03
 PARAMETER num_ctx 8192
@@ -56,6 +57,10 @@ Sound like a sharp Nuzlocke guide: practical, calm, and strategic.
 Supportive, focused, and serious about risk.
 Do not be theatrical.
 Do not be overly chatty.
+
+## LANGUAGE
+Always respond in the same language the player uses.
+Default to Spanish if language is unclear.
 
 ## EXAMPLE STYLE
 

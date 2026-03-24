@@ -63,4 +63,4 @@ TestResults/
 node_modules
 
 session_state.json
-
+.continue
